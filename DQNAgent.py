@@ -30,7 +30,7 @@ class DQNAgent:
         self.memory = deque(maxlen=10000)
         self.gamma = 0.99
         self.epsilon = 1.0
-        self.epsilon_min = 0.1
+        self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.batch_size = 64
         self.update_target_steps = 1000
@@ -87,35 +87,9 @@ def action_to_string(action):
     elif action == 1:
         return "right"
     elif action == 2:
-        return "down"
-    elif action == 3:
         return "rotate"
-    elif action == 4:
+    elif action == 3:
         return "hard_drop"
+    elif action == 4:
+        return "hold"
     return "none"
-
-def train_dqn(episodes):
-    env = GameManager()
-    input_shape = (1, BOARD_HEIGHT, BOARD_WIDTH)
-    num_actions = 5
-    agent = DQNAgent(input_shape, num_actions)
-
-    for e in range(episodes):
-        env = GameManager()
-        state = env.get_state()
-        total_reward = 0
-
-        while not env.is_game_over():
-            action = agent.act(state)
-            env.move(action_to_string(action))
-            next_state = env.get_state()
-            reward = env.get_reward()
-            total_reward += reward
-            done = env.is_game_over()
-            agent.remember(state, action, reward, next_state, done)
-            state = next_state
-            agent.replay()
-
-        print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward}")
-
-    agent.save("dqn_tetris.pth")

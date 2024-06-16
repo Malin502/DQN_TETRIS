@@ -1,6 +1,3 @@
-import pygame
-import sys
-import time
 from PlayerController import PlayerController
     
     

@@ -14,7 +14,7 @@ BLACK = (0, 0, 0)
 
 class PlayerController:
     
-    def train_dqn(episodes):
+    def train_dqn(self, episodes):
         pygame.init()
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Tetris Training")
@@ -53,7 +53,7 @@ class PlayerController:
         agent.save("dqn_tetris.pth")
         pygame.quit()
         
-    def play_game():
+    def play_game(self):
         pygame.init()
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Tetris")
@@ -71,9 +71,11 @@ class PlayerController:
                     elif event.key == pygame.K_RIGHT:
                         env.move("right")
                     elif event.key == pygame.K_UP:
-                        env.rotate()
+                        env.move("rotate")
                     elif event.key == pygame.K_SPACE:
-                        env.hard_drop()
+                        env.move("hard_drop")
+                    elif event.key == pygame.K_DOWN:
+                        env.move("hold")
 
             if env.is_game_over():
                 env.reset()

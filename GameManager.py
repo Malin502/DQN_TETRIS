@@ -70,6 +70,7 @@ class GameManager:
         self.next_shapes.append(self.random_shape()) # 次の形を追加
         self.hold_used = False
         if self.check_collision(self.current_shape.shape, self.current_position):
+            self.score -= 10
             self.game_over()
             
 
@@ -135,17 +136,19 @@ class GameManager:
             new_position = [self.current_position[0], self.current_position[1] + 1]
         elif direction == "down":
             new_position = [self.current_position[0] + 1, self.current_position[1]]
-
-        if direction == "rotate":
+            
+        elif direction == "rotate":
             self.rotate()
         elif direction == "hard_drop":
             self.hard_drop()
+        elif direction == "hold":
+            self.hold()
+            
         else:
             if not self.check_collision(self.current_shape.shape, new_position):
                 self.current_position = new_position
             elif direction == "down":
                 self.merge_shape_to_board()
-                self.score += 10
                 self.spawn_new_shape()
             
 
@@ -173,7 +176,7 @@ class GameManager:
         self.spawn_new_shape()
         
     
-    def draw_board(screen, board, current_shape, current_shape_type, current_position, next_shapes, hold_shape, hold_shape_type, score):
+    def draw_board(self, screen, board, current_shape, current_shape_type, current_position, next_shapes, hold_shape, hold_shape_type, score):
         screen.fill(WHITE)
 
         # Draw the main game board

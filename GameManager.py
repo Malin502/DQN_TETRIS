@@ -1,257 +1,181 @@
 import numpy as np
 import random
-import torch
+
 import pygame
 
-
+# ボードサイズ
+BOARD_WIDTH = 10
+BOARD_HEIGHT = 20
 # 定数
-SCREEN_WIDTH = 800
+SCREEN_WIDTH = 300
 SCREEN_HEIGHT = 600
 BLOCK_SIZE = 30
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-BOARD_WIDTH = 10
-BOARD_HEIGHT = 20
-EMPTY = 0
+COLORS = {
+    0: (0, 0, 0),
+    1: (255, 0, 0)
+}
 
-
+# テトリミノの形状
 SHAPES = [
-    [[1, 1, 1, 1]],  # I
-    [[1, 1], [1, 1]],  # O
-    [[1, 1, 1], [0, 1, 0]],  # T
-    [[1, 1, 0], [0, 1, 1]],  # S
-    [[0, 1, 1], [1, 1, 0]],  # Z
-    [[1, 1, 1], [1, 0, 0]],  # L
-    [[1, 1, 1], [0, 0, 1]],  # J
+    np.array([[1, 1, 1, 1]]),          # I
+    np.array([[1, 1], [1, 1]]),        # O
+    np.array([[0, 1, 0], [1, 1, 1]]),  # T
+    np.array([[0, 1, 1], [1, 1, 0]]),  # S
+    np.array([[1, 1, 0], [0, 1, 1]]),  # Z
+    np.array([[1, 0, 0], [1, 1, 1]]),  # L
+    np.array([[0, 0, 1], [1, 1, 1]])   # J
 ]
 
+# テトリミノの色
 COLORS = [
-    (0, 0, 0),    # EMPTY
-    (255, 0, 0),  # I
-    (0, 255, 0),  # O
-    (0, 0, 255),  # T
-    (255, 255, 0),# S
-    (0, 255, 255),# Z
-    (255, 0, 255),# L
-    (255, 165, 0) # J
+    (0, 0, 0),       # 空
+    (0, 255, 255),   # I
+    (255, 255, 0),   # O
+    (128, 0, 128),   # T
+    (0, 255, 0),     # S
+    (255, 0, 0),     # Z
+    (255, 165, 0),   # L
+    (0, 0, 255)      # J
 ]
 
-#形とshapeのindexを持つクラス
-class Shape:
-    def __init__(self, shape, shape_type):
-        self.shape = shape
-        self.shape_type = shape_type
-
-    def rotate(self):
-        self.shape = np.rot90(self.shape)
-        
 
 class GameManager:
     def __init__(self):
-        self.board = np.zeros((BOARD_HEIGHT, BOARD_WIDTH), dtype=int) # 20x10でゲーム盤を初期化
+        self.board = np.zeros((BOARD_HEIGHT, BOARD_WIDTH), dtype=int)
         self.current_shape = None
-        self.current_position = [0, 0]
-        self.next_shapes = [self.random_shape() for _ in range(3)]
+        self.current_shape_type = None
         self.hold_shape = None
-        self.hold_used = False
-        self.score = 0
-        self.spawn_new_shape()
-        
+        self.hold_shape_type = None
+        self.next_shapes = [(random.choice(SHAPES), random.randint(1, len(SHAPES))) for _ in range(3)]
+        self.current_position = [0, 0]
+        self.reset()
 
-    def random_shape(self):
-        shape = random.choice(SHAPES)
-        shape_type = SHAPES.index(shape) + 1
-        return Shape(np.array(shape), shape_type)
-    
+    def reset(self):
+        self.board.fill(0)
+        self.new_shape()
+        return self.get_state()
 
-    def spawn_new_shape(self):
-        self.current_shape = self.next_shapes.pop(0)
-        self.current_position = [0, BOARD_WIDTH // 2 - len(self.current_shape.shape[0]) // 2]
-        self.next_shapes.append(self.random_shape()) # 次の形を追加
-        self.hold_used = False
-        if self.check_collision(self.current_shape.shape, self.current_position):
-            self.score -= 10
-            self.game_over()
-            
+    def new_shape(self):
+        self.current_shape, self.current_shape_type = self.next_shapes.pop(0)
+        self.next_shapes.append((random.choice(SHAPES), random.randint(1, len(SHAPES))))
+        self.current_position = [0, BOARD_WIDTH // 2 - self.current_shape.shape[1] // 2]
+        self.rotation_count = 0  # 新しい形状が生成されるたびに回転回数をリセット
 
-    def check_collision(self, shape, position):
-        shape_height = len(shape)
-        shape_width = len(shape[0])
-        for row in range(shape_height):
-            for col in range(shape_width):
-                if shape[row][col] and (row + position[0] >= BOARD_HEIGHT or
-                                        col + position[1] < 0 or
-                                        col + position[1] >= BOARD_WIDTH or
-                                        self.board[row + position[0]][col + position[1]]):
-                    return True
-        return False
-    
-
-    #shapeを盤面に固定するメソッド
-    def merge_shape_to_board(self):
-        shape_height = len(self.current_shape.shape)
-        shape_width = len(self.current_shape.shape[0])
-        for row in range(shape_height):
-            for col in range(shape_width):
-                if self.current_shape.shape[row][col]:
-                    self.board[self.current_position[0] + row][self.current_position[1] + col] = self.current_shape.shape_type
-        self.clear_lines()
-        
-        self.score += 1
-        
-
-    def clear_lines(self):
-        new_board = []
-        lines_cleared = 0
-        for row in self.board:
-            if not all(row):
-                new_board.append(row) # 行が埋まっていない場合は新しい盤面に追加
-            else:
-                lines_cleared += 1 # 行が埋まっている場合はカウント
-        for _ in range(lines_cleared):
-            new_board.insert(0, np.zeros(BOARD_WIDTH)) # 埋まった行数だけ新しい行を上部に追加
-            
-        self.board = np.array(new_board)
-        if lines_cleared == 1:
-            self.score += lines_cleared * 100 # スコアを更新
-        elif lines_cleared == 2:
-            self.score += lines_cleared * 300
-        elif lines_cleared == 3:
-            self.score += lines_cleared * 500
-        elif lines_cleared == 4:
-            self.score += lines_cleared * 800
-        
-
-    def game_over(self):
-        print("Game Over")
-        print("Score:", self.score)
-        self.__init__()
-        
+    def rotate(self):
+        new_shape = np.rot90(self.current_shape)
+        if not self.check_collision(new_shape, self.current_position):
+            self.current_shape = new_shape
+            self.rotation_count += 1
 
     def move(self, direction):
         new_position = self.current_position.copy()
         if direction == "left":
-            new_position = [self.current_position[0], self.current_position[1] - 1]
+            new_position[1] -= 1
         elif direction == "right":
-            new_position = [self.current_position[0], self.current_position[1] + 1]
+            new_position[1] += 1
         elif direction == "down":
-            new_position = [self.current_position[0] + 1, self.current_position[1]]
-            
-        elif direction == "rotate":
-            self.rotate()
-        elif direction == "hard_drop":
-            self.hard_drop()
-        elif direction == "hold":
-            self.hold()
-            
-        else:
-            if not self.check_collision(self.current_shape.shape, new_position):
-                self.current_position = new_position
-            elif direction == "down":
-                self.merge_shape_to_board()
-                self.spawn_new_shape()
-            
+            new_position[0] += 1
 
-    def rotate(self):
-        self.current_shape.rotate()
-        if self.check_collision(self.current_shape.shape, self.current_position):
-            self.current_shape.rotate()
-            
+
+        if not self.check_collision(self.current_shape, new_position):
+            self.current_position = new_position
+            return True
+        else:
+            if direction == "down":
+                self.lock_shape()
+                self.clear_lines()
+                self.new_shape()
+            return False
+
+    def hard_drop(self):
+        while self.move("down"):
+            pass
 
     def hold(self):
-        if not self.hold_used:
-            if self.hold_shape:
-                self.current_shape, self.hold_shape = self.hold_shape, self.current_shape
-            else:
-                self.hold_shape = self.current_shape
-                self.spawn_new_shape()
-            self.current_position = [0, BOARD_WIDTH // 2 - len(self.current_shape.shape[0]) // 2]
-            self.hold_used = True
-            
+        if self.hold_shape is None:
+            self.hold_shape = self.current_shape
+            self.hold_shape_type = self.current_shape_type
+            self.new_shape()
+        else:
+            self.hold_shape, self.current_shape = self.current_shape, self.hold_shape
+            self.hold_shape_type, self.current_shape_type = self.current_shape_type, self.hold_shape_type
+            self.current_position = [0, BOARD_WIDTH // 2 - self.current_shape.shape[1] // 2]
+            self.rotation_count = 0
+
+    def check_collision(self, shape, position):
+        for y, row in enumerate(shape):
+            for x, cell in enumerate(row):
+                if cell and (
+                        x + position[1] < 0 or
+                        x + position[1] >= BOARD_WIDTH or
+                        y + position[0] >= BOARD_HEIGHT or
+                        self.board[y + position[0], x + position[1]]):
+                    return True
+        return False
+
+    def lock_shape(self):
+        for y, row in enumerate(self.current_shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    self.board[y + self.current_position[0], x + self.current_position[1]] = self.current_shape_type
+
+    def clear_lines(self):
+        lines_to_clear = [i for i, row in enumerate(self.board) if all(row)]
+        for i in lines_to_clear:
+            self.board[1:i + 1] = self.board[:i]
+            self.board[0] = 0
+        return len(lines_to_clear)
+
+    def get_state(self):
+        state = np.copy(self.board)
+        for y, row in enumerate(self.current_shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    state[y + self.current_position[0], x + self.current_position[1]] = self.current_shape_type
+        return state
+
+    def game_over(self):
+        return self.check_collision(self.current_shape, self.current_position)
+
+    def get_score(self):
+        return 0  # スコア計算のデフォルト値
     
-    def hard_drop(self):
-        while not self.check_collision(self.current_shape.shape, [self.current_position[0] + 1, self.current_position[1]]):
-            self.current_position[0] += 1
-        self.merge_shape_to_board()
-        self.spawn_new_shape()
-        
+    def shape_to_index(self, shape):
+        for i, s in enumerate(SHAPES):
+            if np.array_equal(shape, s):
+                return i + 1
+        return 0
     
-    def draw_board(self, screen, board, current_shape, current_shape_type, current_position, next_shapes, hold_shape, hold_shape_type, score):
+    def draw_board(self, screen):
         screen.fill(WHITE)
 
         # Draw the main game board
-        for row in range(len(board)):
-            for col in range(len(board[row])):
-                pygame.draw.rect(screen, COLORS[int(board[row][col])], 
-                                (col * BLOCK_SIZE, row * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
+        for y, row in enumerate(self.board):
+            for x, cell in enumerate(row):
+                color = COLORS[cell]
+                pygame.draw.rect(screen, color, pygame.Rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
 
         # Draw the current shape
-        shape_height = len(current_shape)
-        shape_width = len(current_shape[0])
-        for row in range(shape_height):
-            for col in range(shape_width):
-                if current_shape[row][col]:
-                    pygame.draw.rect(screen, COLORS[current_shape_type], 
-                                    ((current_position[1] + col) * BLOCK_SIZE, 
-                                    (current_position[0] + row) * BLOCK_SIZE, 
-                                    BLOCK_SIZE, BLOCK_SIZE), 0)
-
-        # Draw the next shapes
-        for i, shape_obj in enumerate(next_shapes):
-            shape, shape_type = shape_obj.shape, shape_obj.shape_type
-            for row in range(len(shape)):
-                for col in range(len(shape[row])):
-                    if shape[row][col]:
-                        pygame.draw.rect(screen, COLORS[shape_type], 
-                                        (SCREEN_WIDTH - 150 + col * BLOCK_SIZE, 50 + i * 100 + row * BLOCK_SIZE, 
-                                        BLOCK_SIZE, BLOCK_SIZE), 0)
+        for y, row in enumerate(self.current_shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    color = COLORS[self.current_shape_type]
+                    pygame.draw.rect(screen, color, pygame.Rect((self.current_position[1] + x) * BLOCK_SIZE, (self.current_position[0] + y) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
 
         # Draw the hold shape
-        if hold_shape:
-            shape = hold_shape.shape
-            for row in range(len(shape)):
-                for col in range(len(shape[row])):
-                    if shape[row][col]:
-                        pygame.draw.rect(screen, COLORS[hold_shape_type], 
-                                        (SCREEN_WIDTH - 150 + col * BLOCK_SIZE, 400 + row * BLOCK_SIZE, 
-                                        BLOCK_SIZE, BLOCK_SIZE), 0)
+        if self.hold_shape is not None:
+            for y, row in enumerate(self.hold_shape):
+                for x, cell in enumerate(row):
+                    if cell:
+                        color = COLORS[self.hold_shape_type]
+                        pygame.draw.rect(screen, color, pygame.Rect(11 * BLOCK_SIZE + x * BLOCK_SIZE, 1 * BLOCK_SIZE + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
 
-        # Draw the score
-        font = pygame.font.Font(None, 36)
-        score_text = font.render(f'Score: {score}', True, BLACK)
-        screen.blit(score_text, (SCREEN_WIDTH - 150, 20))
-            
-
-    def get_board(self):
-        return self.board
-
-    def get_current_shape(self):
-        return self.current_shape.shape
-
-    def get_current_shape_type(self):
-        return self.current_shape.shape_type
-
-    def get_current_position(self):
-        return self.current_position
-
-    def get_next_shapes(self):
-        return self.next_shapes
-
-    def get_hold_shape(self):
-        return self.hold_shape
-
-    def get_hold_shape_type(self):
-        return self.hold_shape.shape_type if self.hold_shape else None
-
-    def get_score(self):
-        return self.score
-
-    def get_state(self):
-        # ボードの状態をTensorに変換
-        return torch.tensor(self.board, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-
-    def is_game_over(self):
-        return np.any(self.board[0, :])
-    
-    def reset(self):
-        self.__init__()
+        # Draw the next shapes
+        for i, (shape, shape_type) in enumerate(self.next_shapes):
+            for y, row in enumerate(shape):
+                for x, cell in enumerate(row):
+                    if cell:
+                        color = COLORS[shape_type]
+                        pygame.draw.rect(screen, color, pygame.Rect(11 * BLOCK_SIZE + x * BLOCK_SIZE, (5 + 4 * i) * BLOCK_SIZE + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))

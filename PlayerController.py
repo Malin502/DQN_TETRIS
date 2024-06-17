@@ -1,8 +1,10 @@
 import pygame
 import sys
 import time
-from GameManager import GameManager, COLORS, BOARD_HEIGHT, BOARD_WIDTH
-from DQNAgent import DQNAgent, action_to_string
+
+import itertools
+from GameManager import GameManager, BOARD_HEIGHT, BOARD_WIDTH
+from DQNAgent import DQNAgent
 
 
 # 定数
@@ -20,38 +22,55 @@ class PlayerController:
         pygame.display.set_caption("Tetris Training")
         clock = pygame.time.Clock()
 
-        input_shape = (1, BOARD_HEIGHT, BOARD_WIDTH)
-        num_actions = 5
-        agent = DQNAgent(input_shape, num_actions)
+        env = GameManager()
+        state_dim = BOARD_WIDTH * BOARD_HEIGHT
+        action_dim = (BOARD_WIDTH * 4) + 1  # 4つの回転のそれぞれに対して横方向の移動とホールド
+        agent = DQNAgent(state_dim, action_dim)
 
         for e in range(episodes):
-            env = GameManager()
-            state = env.get_state()
+            state = env.reset().flatten()
+            total_reward = 0
 
-            while not env.is_game_over():
+            while not env.game_over():
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         pygame.quit()
-                        sys.exit()
-                
+                        return
+
                 action = agent.act(state)
-                env.move(action_to_string(action))
-                next_state = env.get_state()
-                reward = env.get_score()
-                done = env.is_game_over()
+                if action == action_dim - 1:
+                    env.hold()
+                else:
+                    x_move = action // 4 - BOARD_WIDTH // 2
+                    rotations = action % 4
+                    for _ in range(rotations):
+                        env.rotate()
+                    if x_move < 0:
+                        for _ in range(abs(x_move)):
+                            env.move("left")
+                    else:
+                        for _ in range(x_move):
+                            env.move("right")
+                    env.hard_drop()
+
+                next_state = env.get_state().flatten()
+                reward = env.get_score()  # 報酬の計算
+                total_reward += reward
+                done = env.game_over()
                 agent.remember(state, action, reward, next_state, done)
                 state = next_state
                 agent.replay()
 
                 # 描画
-                env.draw_board(screen, env.get_board(), env.get_current_shape(), env.get_current_shape_type(), env.get_current_position(),
-                        env.get_next_shapes(), env.get_hold_shape(), env.get_hold_shape_type(), env.get_score())
+                env.draw_board(screen)
                 pygame.display.flip()
 
-            print(f"Episode {e+1}/{episodes}, Score: {env.get_score()}")
+            print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward}")
 
         agent.save("dqn_tetris.pth")
         pygame.quit()
+        
+        
         
     def play_game(self):
         pygame.init()
@@ -81,8 +100,7 @@ class PlayerController:
                 env.reset()
                 
             env.move("down")
-            env.draw_board(screen, env.get_board(), env.get_current_shape(), env.get_current_shape_type(), env.get_current_position(),
-                    env.get_next_shapes(), env.get_hold_shape(), env.get_hold_shape_type(), env.get_score())
+            env.draw_board(screen)
             pygame.display.flip()
             clock.tick(5)
 

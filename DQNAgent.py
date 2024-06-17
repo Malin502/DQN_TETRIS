@@ -3,63 +3,63 @@ import torch.nn as nn
 import torch.optim as optim
 import random
 from collections import deque
-from GameManager import GameManager, BOARD_HEIGHT, BOARD_WIDTH
 
 class DQN(nn.Module):
-    def __init__(self, input_shape, num_actions):
+    def __init__(self, input_dim, output_dim):
         super(DQN, self).__init__()
-        self.conv1 = nn.Conv2d(input_shape[0], 32, kernel_size=3, stride=1)
-        self.fc1 = nn.Linear(32 * (input_shape[1] - 2) * (input_shape[2] - 2), 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, num_actions)
+        self.fc1 = nn.Linear(input_dim, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, output_dim)
 
     def forward(self, x):
-        x = torch.relu(self.conv1(x))
-        x = x.view(x.size(0), -1)
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
-        return self.fc3(x)
+        x = self.fc3(x)
+        return x
 
 class DQNAgent:
-    def __init__(self, input_shape, num_actions):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = DQN(input_shape, num_actions).to(self.device)
-        self.target_model = DQN(input_shape, num_actions).to(self.device)
-        self.optimizer = optim.Adam(self.model.parameters())
-        self.loss_fn = nn.MSELoss()
+    def __init__(self, state_dim, action_dim):
+        self.state_dim = state_dim
+        self.action_dim = action_dim
         self.memory = deque(maxlen=10000)
         self.gamma = 0.99
         self.epsilon = 1.0
-        self.epsilon_min = 0.01
+        self.epsilon_min = 0.1
         self.epsilon_decay = 0.995
         self.batch_size = 64
-        self.update_target_steps = 1000
-        self.steps = 0
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = DQN(state_dim, action_dim).to(self.device)
+        self.target_model = DQN(state_dim, action_dim).to(self.device)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+        self.loss_fn = nn.MSELoss()
+        self.update_target_model()
 
-    def act(self, state):
-        if random.random() < self.epsilon:
-            return random.randint(0, 4)
-        state = state.to(self.device)
-        with torch.no_grad():
-            q_values = self.model(state)
-        return torch.argmax(q_values, dim=1).item()
+    def update_target_model(self):
+        self.target_model.load_state_dict(self.model.state_dict())
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
+    def act(self, state):
+        if random.random() <= self.epsilon:
+            return random.randrange(self.action_dim)
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        act_values = self.model(state)
+        return torch.argmax(act_values[0]).item()
+
     def replay(self):
         if len(self.memory) < self.batch_size:
             return
-        batch = random.sample(self.memory, self.batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
+        minibatch = random.sample(self.memory, self.batch_size)
+        states, actions, rewards, next_states, dones = zip(*minibatch)
 
-        states = torch.cat(states).to(self.device)
-        actions = torch.tensor(actions).unsqueeze(1).to(self.device)
+        states = torch.FloatTensor(states).to(self.device)
+        actions = torch.tensor(actions).to(self.device)
         rewards = torch.tensor(rewards).to(self.device)
-        next_states = torch.cat(next_states).to(self.device)
+        next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
-        current_q_values = self.model(states).gather(1, actions).squeeze()
+        current_q_values = self.model(states).gather(1, actions.unsqueeze(1)).squeeze()
         next_q_values = self.target_model(next_states).max(1)[0]
         target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
 
@@ -71,25 +71,8 @@ class DQNAgent:
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
-        self.steps += 1
-        if self.steps % self.update_target_steps == 0:
-            self.target_model.load_state_dict(self.model.state_dict())
+    def load(self, name):
+        self.model.load_state_dict(torch.load(name, map_location=self.device))
 
-    def load(self, path):
-        self.model.load_state_dict(torch.load(path))
-
-    def save(self, path):
-        torch.save(self.model.state_dict(), path)
-
-def action_to_string(action):
-    if action == 0:
-        return "left"
-    elif action == 1:
-        return "right"
-    elif action == 2:
-        return "rotate"
-    elif action == 3:
-        return "hard_drop"
-    elif action == 4:
-        return "hold"
-    return "none"
+    def save(self, name):
+        torch.save(self.model.state_dict(), name)

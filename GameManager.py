@@ -7,7 +7,7 @@ import pygame
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
 # 定数
-SCREEN_WIDTH = 300
+SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 BLOCK_SIZE = 30
 WHITE = (255, 255, 255)
@@ -50,11 +50,13 @@ class GameManager:
         self.hold_shape_type = None
         self.next_shapes = [(random.choice(SHAPES), random.randint(1, len(SHAPES))) for _ in range(3)]
         self.current_position = [0, 0]
+        self.score = 0
         self.reset()
 
     def reset(self):
         self.board.fill(0)
         self.new_shape()
+        self.score = 0
         return self.get_state()
 
     def new_shape(self):
@@ -77,6 +79,8 @@ class GameManager:
             new_position[1] += 1
         elif direction == "down":
             new_position[0] += 1
+        elif direction == "rotate":
+            self.rotate()
 
 
         if not self.check_collision(self.current_shape, new_position):
@@ -85,7 +89,8 @@ class GameManager:
         else:
             if direction == "down":
                 self.lock_shape()
-                self.clear_lines()
+                lines_cleared = self.clear_lines()
+                self.score += 1+ self.calculate_line_clear_score(lines_cleared)
                 self.new_shape()
             return False
 
@@ -127,6 +132,17 @@ class GameManager:
             self.board[1:i + 1] = self.board[:i]
             self.board[0] = 0
         return len(lines_to_clear)
+    
+    def calculate_line_clear_score(self, lines_cleared):
+        if lines_cleared == 1:
+            return 100
+        elif lines_cleared == 2:
+            return 300
+        elif lines_cleared == 3:
+            return 500
+        elif lines_cleared == 4:
+            return 800
+        return 0
 
     def get_state(self):
         state = np.copy(self.board)
@@ -135,12 +151,19 @@ class GameManager:
                 if cell:
                     state[y + self.current_position[0], x + self.current_position[1]] = self.current_shape_type
         return state
+    
+    def get_features(self):
+        state = self.get_state().flatten()
+        current_shape_type = self.shape_to_index(self.current_shape)
+        next_shape_type = np.array([shape_type for _, shape_type in self.next_shapes])
+        hold_shape_type = self.shape_to_index(self.hold_shape) if self.hold_shape is not None else -1
+        return np.concatenate([state, [current_shape_type], next_shape_type, [hold_shape_type]])
 
     def game_over(self):
         return self.check_collision(self.current_shape, self.current_position)
 
     def get_score(self):
-        return 0  # スコア計算のデフォルト値
+        return self.score
     
     def shape_to_index(self, shape):
         for i, s in enumerate(SHAPES):
@@ -178,4 +201,14 @@ class GameManager:
                 for x, cell in enumerate(row):
                     if cell:
                         color = COLORS[shape_type]
-                        pygame.draw.rect(screen, color, pygame.Rect(11 * BLOCK_SIZE + x * BLOCK_SIZE, (5 + 4 * i) * BLOCK_SIZE + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+                        pygame.draw.rect(screen, color, pygame.Rect(11 * BLOCK_SIZE + x * BLOCK_SIZE, (8 + 4 * i) * BLOCK_SIZE + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+
+         # Draw the labels
+        font = pygame.font.Font(None, 36)
+        hold_text = font.render('hold', True, BLACK)
+        next_text = font.render('next', True, BLACK)
+        score_text = font.render(f'Score: {self.score}', True, BLACK)
+
+        screen.blit(hold_text, (11 * BLOCK_SIZE, 0))
+        screen.blit(next_text, (11 * BLOCK_SIZE, 5 * BLOCK_SIZE))
+        screen.blit(score_text, (SCREEN_WIDTH - score_text.get_width() - 10, 10))

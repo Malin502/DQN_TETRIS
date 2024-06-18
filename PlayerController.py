@@ -3,12 +3,12 @@ import sys
 import time
 
 import itertools
-from GameManager import GameManager, BOARD_HEIGHT, BOARD_WIDTH
+from GameManager import GameManager, BOARD_HEIGHT, BOARD_WIDTH, BUTTON_HEIGHT, BUTTON_WIDTH
 from DQNAgent import DQNAgent
 
 
 # 定数
-SCREEN_WIDTH = 800
+SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 600
 BLOCK_SIZE = 30
 WHITE = (255, 255, 255)
@@ -26,8 +26,14 @@ class PlayerController:
         state_dim = BOARD_WIDTH * BOARD_HEIGHT + 5  # ボードの状態とテトリミノの種類
         action_dim = (BOARD_WIDTH * 4) + 1  # 4つの回転のそれぞれに対して横方向の移動とホールド
         agent = DQNAgent(state_dim, action_dim)
+        
+        save_button_rect = pygame.Rect(SCREEN_WIDTH - BUTTON_WIDTH - 10, SCREEN_HEIGHT - BUTTON_HEIGHT - 10, BUTTON_WIDTH, BUTTON_HEIGHT)
+        training = True
 
         for e in range(episodes):
+            if not training:
+                break
+            
             env.reset()
             state = env.get_features()
             total_reward = 0
@@ -38,6 +44,14 @@ class PlayerController:
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         return
+                    
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        if env.is_button_clicked(event.pos, save_button_rect):
+                            agent.save("dqn_tetris.pth")
+                            training = False
+                
+                if not training:
+                    break
 
                 action = agent.act(state)
                 if action == action_dim - 1:

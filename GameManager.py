@@ -7,8 +7,10 @@ import pygame
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
 # 定数
-SCREEN_WIDTH = 800
+SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 600
+BUTTON_WIDTH = 100
+BUTTON_HEIGHT = 50
 BLOCK_SIZE = 30
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -212,3 +214,12 @@ class GameManager:
         screen.blit(hold_text, (11 * BLOCK_SIZE, 0))
         screen.blit(next_text, (11 * BLOCK_SIZE, 5 * BLOCK_SIZE))
         screen.blit(score_text, (SCREEN_WIDTH - score_text.get_width() - 10, 10))
+        
+        # Draw the save button
+        pygame.draw.rect(screen, BLACK, (SCREEN_WIDTH - BUTTON_WIDTH - 10, SCREEN_HEIGHT - BUTTON_HEIGHT - 10, BUTTON_WIDTH, BUTTON_HEIGHT))
+        save_text = font.render('Save', True, WHITE)
+        screen.blit(save_text, (SCREEN_WIDTH - BUTTON_WIDTH - 10 + 25, SCREEN_HEIGHT - BUTTON_HEIGHT - 10 + 10))
+        
+        
+    def is_button_clicked(self, pos, button_rect):
+        return button_rect.collidepoint(pos)

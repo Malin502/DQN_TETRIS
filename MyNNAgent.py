@@ -135,7 +135,7 @@ class MyNNAgent:
     
     #盤面をシミュレートして報酬の予測値が最も高い行動の盤面に移動する
     def act(self, next_state, scores):
-        print(scores)
+        #print(scores)
         rewards = []
         line_clear_actions = []
         #print(len(next_state))
@@ -184,93 +184,6 @@ class MyNNAgent:
     def remember(self, state, predict, reward, next_state, done):
         self.memory.append((state, predict, reward, next_state, done))
 
-
-    def load(self, name):
-        self.model.load_state_dict(torch.load(name, map_location=self.device))
-
-    def save(self, name):
-        torch.save(self.model.state_dict(), name)
-
-    def __init__(self, state_dim):
-        self.state_dim = state_dim
-        self.memory = deque(maxlen=10000)
-        self.batch_size = 64
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = MyNN(state_dim).to(self.device)
-        self.target_model = MyNN(state_dim).to(self.device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.0005)
-        self.loss_fn = nn.MSELoss()
-        self.gamma = 0.99
-        self.epsilon = 1.0
-        self.epsilon_min = 0.1
-        self.epsilon_decay = 0.995
-        self.env = GameManager()
-        self.update_target_model()
-        self.last_action = None  # 直前の行動を保持するための変数
-        
-    #報酬の予測値を返す
-    def predict(self, feature):
-        feature = torch.tensor(feature).float().to(self.device)
-        return self.model(feature)
-        
-    def replay(self):
-        if len(self.memory) < self.batch_size:
-            return
-        minibatch = random.sample(self.memory, self.batch_size)
-        feature, predict, rewards, next_feature, dones = zip(*minibatch)
-
-        feature = torch.FloatTensor(feature).to(self.device)
-        predict = torch.FloatTensor(predict).to(self.device)
-        rewards = torch.tensor(rewards).to(self.device)
-        next_feature = torch.FloatTensor(next_feature).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
-
-        next_values = self.target_model(feature)
-        next_values = torch.tensor(next_values).to(self.device)
-        
-        target_values = rewards + self.gamma * next_values * (1 - dones)
-
-        loss = self.loss_fn(predict, target_values)
-        loss = loss.clone().detach().requires_grad_(True)
-        
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
-    
-    #盤面をシミュレートして報酬の予測値が最も高い行動の盤面に移動する
-    def act(self, next_state):
-        rewards = []
-        
-        for i in range(len(next_state)):
-            feature = self.env.get_features(next_state[i])
-            rewards.append(self.predict(feature))
-            
-        index_of_best_action = rewards.index(max(rewards))
-        #print(self.last_action)
-        
-        # 行動の多様性を促進
-        if random.random() <= self.epsilon:
-            next_board_index = random.randrange(len(next_state))
-            return next_board_index, rewards[next_board_index]
-        else:
-            # ホールドの連続選択を回避
-            if self.last_action == 'hold' and random.random() < 0.50: #学習効率化のためにホールドの連続選択を回避
-                # ランダムに他の行動を選択
-                next_board_index = random.choice([i for i in range(len(next_state)) if i != index_of_best_action])
-                self.last_action = 'other'
-            else:
-                next_board_index = index_of_best_action
-                self.last_action = 'hold' if index_of_best_action == len(next_state) - 1 else 'other'  
-            return next_board_index, rewards[next_board_index]
-
-    def update_target_model(self):
-        self.target_model.load_state_dict(self.model.state_dict())
-
-    def remember(self, state, predict, reward, next_state, done):
-        self.memory.append((state, predict, reward, next_state, done))
 
     def load(self, name):
         self.model.load_state_dict(torch.load(name, map_location=self.device))

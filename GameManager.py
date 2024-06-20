@@ -91,17 +91,29 @@ class GameManager:
             if direction == "down":
                 self.lock_shape()
                 lines_cleared = self.clear_lines()
-                self.score += self.calculate_line_clear_score(lines_cleared)
+                self.score += 1 * self.current_position[0] / 10 + self.calculate_line_clear_score(lines_cleared)
                 self.new_shape()
             return False
 
+
+    def action(self, action):
+        if(action[2] == 1):
+            self.hold()
+        else:
+            for _ in range(action[1]):
+                self.rotate()
+            self.current_position[1] += action[0]
+            
+            if not self.check_collision(self.current_shape.shape, self.current_position):
+                self.hard_drop()
+
+        return
+    
+    
     def hard_drop(self):
         while self.move("down"):
             pass
         
-    def hard_drop_dif(self):
-        while self.move("down"):
-            pass
 
     def hold(self):
         if self.current_shape is None:
@@ -224,6 +236,7 @@ class GameManager:
     #現在のボードの状態から次のボードの状態をシミュレートする
     def simulate_next_boards(self):
         simulated_boards = []
+        actions = []
         # シミュレーション用のゲームマネージャーインスタンスを作成
         simulation_manager = GameManager()
         simulation_manager.board = np.copy(self.board)
@@ -246,13 +259,16 @@ class GameManager:
                     simulation_manager.rotate()
                 simulation_manager.current_position[1] += dx
                 if not simulation_manager.check_collision(simulation_manager.current_shape.shape, simulation_manager.current_position):
-                    simulation_manager.hard_drop_dif()
+                    simulation_manager.hard_drop()
+                    actions.append([dx, rotation, 0])
                     simulated_boards.append(np.copy(simulation_manager.board))
                 simulation_manager.board = np.copy(self.board)
 
         # ホールド時の状態シミュレート
         if self.current_shape is not None:
             # 現在の状態を一時保存
+            actions.append([0, 0, 1])
+            
             temp_current_shape = simulation_manager.current_shape
             temp_hold_shape = simulation_manager.hold_shape
             temp_current_position = simulation_manager.current_position.copy()
@@ -268,7 +284,7 @@ class GameManager:
             simulation_manager.board = np.copy(self.board)
             simulation_manager.current_shape.shape = np.copy(self.current_shape.shape)
 
-        return np.array(simulated_boards)
+        return np.array(simulated_boards), actions
 
 
     
@@ -349,3 +365,4 @@ class GameManager:
         ] + next_shape_types + [hold_shape_type]
 
         return features
+

@@ -30,7 +30,6 @@ class MyNNAgent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = MyNN(state_dim).to(self.device)
         self.target_model = MyNN(state_dim).to(self.device)
-        self.target_model = MyNN(state_dim).to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.loss_fn = nn.MSELoss()
         self.gamma = 0.99
@@ -51,25 +50,29 @@ class MyNNAgent:
         if len(self.memory) < self.batch_size:
             return
         minibatch = random.sample(self.memory, self.batch_size)
-        states, predict, rewards, next_states = zip(*minibatch)
+        feature, predict, rewards, next_feature, dones = zip(*minibatch)
+        
+        #print(next_states)
         
 
-        states = torch.FloatTensor(states).to(self.device)
+        feature = torch.FloatTensor(feature).to(self.device)
         predict = torch.FloatTensor(predict).to(self.device)
         rewards = torch.tensor(rewards).to(self.device)
-
+        next_feature = torch.FloatTensor(next_feature).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
         current_values = predict
-        next_values = self.target_model(self.env.get_features(next_states))
+        next_values = self.target_model(feature)
         next_values = torch.tensor(next_values).to(self.device)
-        target_values = rewards + self.gamma * next_values
+        target_values = rewards + self.gamma * next_values * (1 - dones)
         
 
         loss = self.loss_fn(current_values, target_values)
+        loss = loss.clone().detach().requires_grad_(True)
+        #print(loss)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
@@ -77,13 +80,14 @@ class MyNNAgent:
     
     
     #盤面をシミュレートして報酬の予測値が最も高い行動の盤面に移動する
-    def act(self):
+    def act(self, next_state):
         rewards = []
-        next_state = self.env.simulate_next_boards()
         #print(len(next_state))
                 
         for i in range(len(next_state)):
+            #print(next_state[i])
             feature = self.env.get_features(next_state[i])
+            #print(feature)
             rewards.append(self.predict(feature))
             
         index_of_best_action = rewards.index(max(rewards))
@@ -91,18 +95,16 @@ class MyNNAgent:
         if random.random() <= self.epsilon:
             next_board_index =  random.randrange(len(next_state))
             #print(next_board_index)
-            self.env.board = next_state[next_board_index]
-            return rewards[next_board_index]
+            return next_board_index, rewards[next_board_index]
         else:
-            self.env.board = next_state[index_of_best_action]
-            return rewards[index_of_best_action]
+            return index_of_best_action, rewards[index_of_best_action]
         
 
     def update_target_model(self):
         self.target_model.load_state_dict(self.model.state_dict())
 
-    def remember(self, state, predict, reward, next_state):
-        self.memory.append((state, predict, reward, next_state))
+    def remember(self, state, predict, reward, next_state, done):
+        self.memory.append((state, predict, reward, next_state, done))
 
 
     def load(self, name):

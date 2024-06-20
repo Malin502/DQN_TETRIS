@@ -56,6 +56,8 @@ class DQNAgent:
             return
         minibatch = random.sample(self.memory, self.batch_size)
         states, actions, rewards, next_states, dones = zip(*minibatch)
+        #print(next_states)
+        #print("=====================================================")
 
         states = torch.FloatTensor(states).to(self.device)
         actions = torch.tensor(actions).to(self.device)
@@ -67,8 +69,11 @@ class DQNAgent:
         next_q_values = self.target_model(next_states).max(1)[0]
         target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
         
+        #print(next_q_values)
+        
 
         loss = self.loss_fn(current_q_values, target_q_values)
+        #print(loss)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()

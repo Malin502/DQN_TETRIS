@@ -7,7 +7,7 @@ print("device:", device)
 if __name__ == "__main__":
     cont = PlayerController()
     
-    mode = "play"
+    mode = "trainM"
     if mode == 'play':
         cont.play_game()
     elif mode == 'train':

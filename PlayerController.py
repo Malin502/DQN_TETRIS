@@ -55,8 +55,14 @@ class PlayerController:
                             training = False
                             
                 past_state = env.board.copy()
+                past_feature = env.get_features(past_state)
                 
-                predict_rewards = agent.act()
+                #次の盤面をシミュレートしエージェントに渡す
+                next_state, actions = env.simulate_next_boards()
+                best_index, predict_rewards = agent.act(next_state)
+                action = actions[best_index]
+                
+                env.action(action)
                 #print(env.board)
                 
                 current_score = env.get_score()
@@ -65,9 +71,9 @@ class PlayerController:
                 total_reward += reward
                 done = env.game_over()
                 if done:
-                    reward = -3
+                    reward = -5
                     
-                agent.remember(past_state, predict_rewards, reward, env.board)
+                agent.remember(past_feature, predict_rewards, reward, env.get_features(env.board), done)
                 agent.replay()
 
                 # 描画
@@ -94,7 +100,7 @@ class PlayerController:
         clock = pygame.time.Clock()
 
         env = GameManager()
-        state_dim = BOARD_WIDTH * BOARD_HEIGHT + 5  # ボードの状態とテトリミノの種類
+        state_dim = 13  # ボードの状態とテトリミノの種類
         action_dim = (BOARD_WIDTH * 4) + 1  # 4つの回転のそれぞれに対して横方向の移動とホールド
         agent = DQNAgent(state_dim, action_dim)
         
@@ -106,7 +112,7 @@ class PlayerController:
                 break
             
             env.reset()
-            state = env.get_features()
+            feature = env.get_features(env.board)
             total_reward = 0
             prev_score = 0
 
@@ -124,7 +130,7 @@ class PlayerController:
                 if not training:
                     break
 
-                action = agent.act(state)
+                action = agent.act(feature)
                 if action == action_dim - 1:
                     env.hold()
                 else:
@@ -140,17 +146,18 @@ class PlayerController:
                             env.move("right")
                     env.hard_drop()
 
-                next_state = env.get_features().flatten()
+                next_feartures = env.get_features(env.board)
+                #print(next_feartures)
                 current_score = env.get_score()
                 reward = current_score - prev_score  # 報酬の計算
                 prev_score = current_score
                 total_reward += reward
                 done = env.game_over()
                 if done:
-                    reward = -3
+                    reward = -5
                     
-                agent.remember(state, action, reward, next_state, done)
-                state = next_state
+                agent.remember(feature, action, reward, next_feartures, done)
+                feature = next_feartures
                 agent.replay()
 
                 # 描画

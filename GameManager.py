@@ -35,6 +35,9 @@ SHAPES = [
     np.array([[0, 0, 1], [1, 1, 1]])   # J
 ]
 
+
+
+
 class Shape:
     def __init__(self, shape_index):
         self.shape = SHAPES[shape_index]
@@ -92,6 +95,7 @@ class GameManager:
                 self.lock_shape()
                 lines_cleared = self.clear_lines()
                 self.score += 1 * self.current_position[0] / 10 + self.calculate_line_clear_score(lines_cleared)
+                self.score = round(self.score, 2)
                 self.new_shape()
             return False
 
@@ -152,6 +156,20 @@ class GameManager:
             self.board[1:i + 1] = self.board[:i]
             self.board[0] = 0
         return len(lines_to_clear)
+    
+    #スコアに応じて消えたライン数を返す
+    def lines_cleard(score):
+        if score >= 800:
+            return 4
+        elif score >= 500:
+            return 3
+        elif score >= 300:
+            return 2
+        elif score >= 100:
+            return 1
+        else:
+            return 0
+    
     
     def calculate_line_clear_score(self, lines_cleared):
         if lines_cleared == 1:
@@ -237,6 +255,7 @@ class GameManager:
     def simulate_next_boards(self):
         simulated_boards = []
         actions = []
+        scores = []
         # シミュレーション用のゲームマネージャーインスタンスを作成
         simulation_manager = GameManager()
         simulation_manager.board = np.copy(self.board)
@@ -247,7 +266,7 @@ class GameManager:
             simulation_manager.hold_shape.shape = np.copy(self.hold_shape.shape)
         simulation_manager.next_shapes = [Shape(shape.type - 1) for shape in self.next_shapes]
         simulation_manager.current_position = self.current_position.copy()
-        simulation_manager.score = self.score
+        simulation_manager.score = 0
         simulation_manager.latest_clear_mino_height = self.latest_clear_mino_height
 
         # ホールドしていない場合の状態シミュレート
@@ -261,13 +280,17 @@ class GameManager:
                 if not simulation_manager.check_collision(simulation_manager.current_shape.shape, simulation_manager.current_position):
                     simulation_manager.hard_drop()
                     actions.append([dx, rotation, 0])
+                    scores.append(simulation_manager.score)
                     simulated_boards.append(np.copy(simulation_manager.board))
                 simulation_manager.board = np.copy(self.board)
+                
+                simulation_manager.score = 0
 
         # ホールド時の状態シミュレート
         if self.current_shape is not None:
             # 現在の状態を一時保存
             actions.append([0, 0, 1])
+            scores.append(0)
             
             temp_current_shape = simulation_manager.current_shape
             temp_hold_shape = simulation_manager.hold_shape
@@ -284,7 +307,7 @@ class GameManager:
             simulation_manager.board = np.copy(self.board)
             simulation_manager.current_shape.shape = np.copy(self.current_shape.shape)
 
-        return np.array(simulated_boards), actions
+        return np.array(simulated_boards), actions, scores
 
 
     

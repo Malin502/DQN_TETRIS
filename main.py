@@ -1,4 +1,5 @@
 import torch
+torch.manual_seed(42)
 from PlayerController import PlayerController
     
 device = 'cuda' if torch.cuda.is_available() else 'cpu'

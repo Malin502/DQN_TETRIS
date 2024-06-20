@@ -58,8 +58,8 @@ class PlayerController:
                 past_feature = env.get_features(past_state)
                 
                 #次の盤面をシミュレートしエージェントに渡す
-                next_state, actions = env.simulate_next_boards()
-                best_index, predict_rewards = agent.act(next_state)
+                next_state, actions, scores = env.simulate_next_boards()
+                best_index, predict_rewards = agent.act(next_state, scores)
                 action = actions[best_index]
                 
                 env.action(action)

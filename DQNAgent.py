@@ -1,4 +1,5 @@
 import torch
+torch.manual_seed(42)
 import torch.nn as nn
 import torch.optim as optim
 import random

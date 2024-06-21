@@ -27,7 +27,7 @@ class PlayerController:
         clock = pygame.time.Clock()
 
         env = GameManager()
-        state_dim = 13
+        state_dim = 14
         
         agent = MyNNAgent(state_dim)
         
@@ -62,7 +62,7 @@ class PlayerController:
                 best_index, predict_rewards = agent.act(next_state, scores)
                 action = actions[best_index]
                 
-                env.action(action)
+                y_position = env.action(action)
                 #print(env.board)
                 
                 current_score = env.get_score()
@@ -71,9 +71,9 @@ class PlayerController:
                 total_reward += reward
                 done = env.game_over()
                 if done:
-                    reward = -5
+                    reward -= 100
                     
-                agent.remember(past_feature, predict_rewards, reward, env.get_features(env.board), done)
+                agent.remember(past_feature, predict_rewards, reward, env.get_features(env.board), done, y_position)
                 agent.replay()
 
                 # 描画

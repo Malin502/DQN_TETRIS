@@ -111,7 +111,7 @@ class GameManager:
             if not self.check_collision(self.current_shape.shape, self.current_position):
                 self.hard_drop()
 
-        return
+        return self.current_position[0]
     
     
     def hard_drop(self):
@@ -314,6 +314,7 @@ class GameManager:
     
     def get_features(self, board):
         hole_count = 0
+        blocks_above_holes = 0  # 新しい特徴量
         row_transitions = 0
         column_transitions = 0
         bumpiness = 0
@@ -321,6 +322,7 @@ class GameManager:
         center_max_height = 0
         aggregate_height = 0
         heights = [0] * BOARD_WIDTH
+        
 
         for x in range(BOARD_WIDTH):
             column_holes = 0
@@ -333,8 +335,11 @@ class GameManager:
                     aggregate_height += heights[x]
                     if x >= 3 and x <= 6:
                         center_max_height = max(center_max_height, heights[x])
+                    if column_holes > 0:
+                        blocks_above_holes += 1
                 elif block_found:
                     hole_count += 1
+                    column_holes += 1
 
         for y in range(BOARD_HEIGHT):
             for x in range(BOARD_WIDTH):
@@ -377,6 +382,7 @@ class GameManager:
 
         features = [
             hole_count,
+            blocks_above_holes,
             self.latest_clear_mino_height,
             row_transitions,
             column_transitions,

@@ -34,23 +34,20 @@ class BufferItem:
 class ExperienceBuffer:
     def __init__(self, buffer_size = 10000):
         self.buffer = deque(maxlen=buffer_size)
-        self.data_line_cnt = [0, 0, 0, 0, 0]
         
     def append(self, experience: BufferItem):
         if len(self.buffer) >= self.buffer.maxlen:
             pop_item = self.buffer.popleft()
-            self.data_line_cnt[pop_item.clear_lines] -= 1
             
         self.buffer.append(experience)
-        self.data_line_cnt[experience.clear_lines] += 1
         
     def sample(
         self, size: int
-    ) -> List[Tuple[np.ndarray, int, float, np.ndarray, bool]]:
+    ) -> List[Tuple[np.ndarray, float, float, np.ndarray, bool]]:
         idx = np.random.choice(len(self.buffer), size, replace=False)
         return [self.buffer[i] for i in idx]
     
-    def __len__(self):
+    def len(self):
         return len(self.buffer)
 
 
@@ -75,7 +72,7 @@ class MyNNAgent:
     def __init__(self, state_dim, ):
         self.state_dim = state_dim
         self.memory = deque(maxlen=10000)
-        self.batch_size = 64
+        self.batch_size = 128
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = MyNN(state_dim).to(self.device)
         self.target_model = MyNN(state_dim).to(self.device)
@@ -89,8 +86,8 @@ class MyNNAgent:
         self.update_target_model()
         self.last_action = None
         
-        self.lower_experinece_buffer = ExperienceBuffer()
-        self.upper_experinece_buffer = ExperienceBuffer()
+        self.lower_experience_buffer = ExperienceBuffer()
+        self.upper_experience_buffer = ExperienceBuffer()
         
         
     #報酬の予測値を返す
@@ -101,11 +98,22 @@ class MyNNAgent:
         
     def replay(self):
         
-        if len(self.memory) < self.batch_size:
+        if (self.lower_experience_buffer.len() < self.batch_size // 2
+                or self.upper_experience_buffer.len() < self.batch_size - self.batch_size // 2):
+            
+            print("lower experience buffer size: ", self.lower_experience_buffer.len())
+            print("upper experience buffer size: ",self.upper_experience_buffer.len(),"\n",)
+            
             return
-        minibatch = random.sample(self.memory, self.batch_size)
-        feature, predict, rewards, next_feature, dones = zip(*minibatch)
         
+        lower_batch = self.lower_experience_buffer.sample(self.batch_size // 2)
+        upper_batch = self.upper_experience_buffer.sample(self.batch_size - self.batch_size // 2)
+        all_batch = lower_batch + upper_batch
+        
+        feature = np.array([sample.state for sample in all_batch])
+        next_feature = np.array([sample.next_state for sample in all_batch])
+        predict = np.array([sample.predict for sample in all_batch])
+        rewards = np.array([sample.reward for sample in all_batch])
         #print(next_states)
         
 
@@ -113,10 +121,9 @@ class MyNNAgent:
         predict = torch.FloatTensor(predict).to(self.device)
         rewards = torch.tensor(rewards).to(self.device)
         next_feature = torch.FloatTensor(next_feature).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
         current_values = predict
-        next_values = self.target_model(feature)
+        next_values = self.target_model(next_feature)
         next_values = torch.tensor(next_values).to(self.device)
         target_values = rewards + self.gamma * next_values
         
@@ -181,8 +188,15 @@ class MyNNAgent:
     def update_target_model(self):
         self.target_model.load_state_dict(self.model.state_dict())
 
-    def remember(self, state, predict, reward, next_state, done):
-        self.memory.append((state, predict, reward, next_state, done))
+    def remember(self, state, predict, reward, next_state, done, y_position):
+        bufferItem = BufferItem(state, predict, reward, next_state, done)
+        
+        if (y_position >10):
+            self.lower_experience_buffer.append(bufferItem)
+        else:
+            self.upper_experience_buffer.append(bufferItem)
+        
+        print(y_position)
 
 
     def load(self, name):

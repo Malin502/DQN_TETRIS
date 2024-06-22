@@ -44,6 +44,7 @@ class Shape:
         self.color = COLORS[shape_index + 1]
         self.type = shape_index + 1
 
+
 class GameManager:
     def __init__(self):
         self.board = np.zeros((BOARD_HEIGHT, BOARD_WIDTH), dtype=int)
@@ -53,6 +54,7 @@ class GameManager:
         self.current_position = [0, 0]
         self.score = 0
         self.latest_clear_mino_height = 0
+        self.latest_y_position = 0
         self.reset()
 
     def reset(self):
@@ -65,7 +67,7 @@ class GameManager:
     def new_shape(self):
         self.current_shape = self.next_shapes.pop(0)
         self.next_shapes.append(Shape(random.randint(0, len(SHAPES) - 1)))
-        self.current_position = [0, BOARD_WIDTH // 2 - self.current_shape.shape.shape[1] // 2]
+        self.current_position = [0, BOARD_WIDTH // 2 - self.current_shape.shape.shape[1] // 2]  # 初期位置を中央に設定
         self.rotation_count = 0  # 新しい形状が生成されるたびに回転回数をリセット
 
     def rotate(self):
@@ -86,6 +88,7 @@ class GameManager:
             self.rotate()
         elif direction == "hard_drop":
             self.hard_drop()
+            return True
 
         if not self.check_collision(self.current_shape.shape, new_position):
             self.current_position = new_position
@@ -94,7 +97,8 @@ class GameManager:
             if direction == "down":
                 self.lock_shape()
                 lines_cleared = self.clear_lines()
-                self.score += 1 * self.current_position[0] / 10 + self.calculate_line_clear_score(lines_cleared)
+                self.latest_y_position = self.current_position[0]
+                self.score += 1 * self.latest_y_position / 10 + self.calculate_line_clear_score(lines_cleared)
                 self.score = round(self.score, 2)
                 self.new_shape()
             return False
@@ -111,7 +115,7 @@ class GameManager:
             if not self.check_collision(self.current_shape.shape, self.current_position):
                 self.hard_drop()
 
-        return self.current_position[0]
+        return self.latest_y_position
     
     
     def hard_drop(self):
@@ -129,7 +133,7 @@ class GameManager:
         else:
             # スワップ
             self.hold_shape, self.current_shape = self.current_shape, self.hold_shape
-            self.current_position = [0, BOARD_WIDTH // 2 - self.current_shape.shape.shape[1] // 2]
+            self.current_position = [0, BOARD_WIDTH // 2]
             self.rotation_count = 0
 
     def check_collision(self, shape, position):
@@ -158,7 +162,7 @@ class GameManager:
         return len(lines_to_clear)
     
     #スコアに応じて消えたライン数を返す
-    def lines_cleard(score):
+    def lines_cleard(self, score):
         if score >= 800:
             return 4
         elif score >= 500:
@@ -270,7 +274,7 @@ class GameManager:
         simulation_manager.latest_clear_mino_height = self.latest_clear_mino_height
 
         # ホールドしていない場合の状態シミュレート
-        for dx in range(-5, 6):
+        for dx in range(-5, 7):
             for rotation in range(4):
                 simulation_manager.current_position = self.current_position.copy()
                 simulation_manager.current_shape.shape = np.copy(self.current_shape.shape)
@@ -314,7 +318,7 @@ class GameManager:
     
     def get_features(self, board):
         hole_count = 0
-        blocks_above_holes = 0  # 新しい特徴量
+        blocks_above_holes = self.get_above_block_squared_sum()  # 新しい特徴量
         row_transitions = 0
         column_transitions = 0
         bumpiness = 0
@@ -322,46 +326,43 @@ class GameManager:
         center_max_height = 0
         aggregate_height = 0
         heights = [0] * BOARD_WIDTH
-        
 
         for x in range(BOARD_WIDTH):
-            column_holes = 0
             block_found = False
             for y in range(BOARD_HEIGHT):
-                
                 if board[y, x] != 0:
                     block_found = True
-                    heights[x] = BOARD_HEIGHT - y
-                    aggregate_height += heights[x]
-                    if x >= 3 and x <= 6:
+                    heights[x] = max(heights[x], BOARD_HEIGHT - y)
+                    if BOARD_WIDTH // 2 - 2 <= x < BOARD_WIDTH // 2 + 2:
                         center_max_height = max(center_max_height, heights[x])
-                    if column_holes > 0:
-                        blocks_above_holes += 1
+                        
                 elif block_found:
                     hole_count += 1
-                    column_holes += 1
+            aggregate_height += heights[x]
+            
+        
+
+        
+        for x in range(1, BOARD_WIDTH):
+            bumpiness += abs(heights[x] - heights[x - 1])
 
         for y in range(BOARD_HEIGHT):
             for x in range(BOARD_WIDTH):
-                
                 if x < BOARD_WIDTH - 1:
                     if board[y, x] == 0 and board[y, x + 1] != 0:
                         row_transitions += 1
                     elif board[y, x] != 0 and board[y, x + 1] == 0:
                         row_transitions += 1
-                        
+
                 if y < BOARD_HEIGHT - 1:
                     if board[y, x] == 0 and board[y + 1, x] != 0:
                         column_transitions += 1
                     elif board[y, x] != 0 and board[y + 1, x] == 0:
                         column_transitions += 1
+                    
+                
                         
-
-        for x in range(1, BOARD_WIDTH):
-            bumpiness += abs(heights[x] - heights[x - 1])
-
         cumulative_wells = 0
-
         for x in range(1, BOARD_WIDTH - 1):
             well_depth = 0
             for y in range(BOARD_HEIGHT):
@@ -372,9 +373,6 @@ class GameManager:
                         cumulative_wells += well_depth * (well_depth + 1) // 2
                         well_depth = 0
 
-            # 列の終わりに達した場合にもチェック
-            if well_depth > 0:
-                cumulative_wells += well_depth * (well_depth + 1) // 2
 
         current_shape_type = self.current_shape.type
         next_shape_types = [shape.type for shape in self.next_shapes]
@@ -394,4 +392,20 @@ class GameManager:
         ] + next_shape_types + [hold_shape_type]
 
         return features
-
+    
+    
+    def get_above_block_squared_sum(self) -> int:
+        # ========== above_block_squared_sum ========== #
+        # 空マスで自身より上部にあるブロックの数の二乗和
+        res = 0
+        for i in range(BOARD_HEIGHT):
+            for j in range(BOARD_WIDTH):
+                if self.board[i, j] != 0:
+                    continue
+                cnt = 0
+                for k in range(i - 1, -1, -1):
+                    if self.board[k, j] != 0:
+                        cnt += 1
+                res += cnt**2
+                
+        return res

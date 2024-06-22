@@ -17,5 +17,11 @@ if __name__ == "__main__":
     elif mode == 'trainM':
         episodes = int(input("エピソード数を入力してください:"))
         cont.train_MyNN(episodes)
+    elif mode == 'trainMN':
+        episodes = int(input("エピソード数を入力してください:"))
+        cont.train_MyNN_no_screen(episodes)
+    elif mode == 'playM':
+        cont.play_MyNN()
+        
     else:
         print("playまたはtrainDまたはtrainMを入力してください")

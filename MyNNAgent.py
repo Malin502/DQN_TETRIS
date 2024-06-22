@@ -23,23 +23,27 @@ def lines_cleard(score):
     
     
 class BufferItem:
-    def __init__(self, state, predict, reward, next_state, done):
+    def __init__(self, state, predict, reward, next_state, done, clear_lines):
         self.state = state
         self.predict = predict
         self.reward = reward
         self.next_state = next_state
         self.done = done
+        self.clear_lines = clear_lines
         
         
 class ExperienceBuffer:
     def __init__(self, buffer_size = 10000):
         self.buffer = deque(maxlen=buffer_size)
+        self.data_line_cnt = [0, 0, 0, 0, 0]
         
     def append(self, experience: BufferItem):
         if len(self.buffer) >= self.buffer.maxlen:
             pop_item = self.buffer.popleft()
+            self.data_line_cnt[pop_item.clear_lines] -= 1
             
         self.buffer.append(experience)
+        self.data_line_cnt[experience.clear_lines] += 1
         
     def sample(
         self, size: int
@@ -58,7 +62,7 @@ class MyNN(nn.Module):
         self.fc2 = nn.Linear(64, 256)
         self.fc3 = nn.Linear(256, 128)
         self.fc4 = nn.Linear(128, 64)
-        self.fc5 = nn.Linear(64, 1) #出力は報酬の期待値
+        self.fc5 = nn.Linear(64, 1) #報酬の予測値を返す
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -71,8 +75,8 @@ class MyNN(nn.Module):
 class MyNNAgent:
     def __init__(self, state_dim, ):
         self.state_dim = state_dim
-        self.memory = deque(maxlen=10000)
-        self.batch_size = 128
+        self.batch_size = 256
+        self.epochs = 8
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = MyNN(state_dim).to(self.device)
         self.target_model = MyNN(state_dim).to(self.device)
@@ -82,6 +86,7 @@ class MyNNAgent:
         self.epsilon = 1.0
         self.epsilon_min = 0.05
         self.epsilon_decay = 0.995
+        self.num_learn = 0
         self.env = GameManager()
         self.update_target_model()
         self.last_action = None
@@ -98,45 +103,65 @@ class MyNNAgent:
         
     def replay(self):
         
+        
         if (self.lower_experience_buffer.len() < self.batch_size // 2
                 or self.upper_experience_buffer.len() < self.batch_size - self.batch_size // 2):
-            
+            '''
             print("lower experience buffer size: ", self.lower_experience_buffer.len())
             print("upper experience buffer size: ",self.upper_experience_buffer.len(),"\n",)
-            
+            '''
             return
         
         lower_batch = self.lower_experience_buffer.sample(self.batch_size // 2)
         upper_batch = self.upper_experience_buffer.sample(self.batch_size - self.batch_size // 2)
         all_batch = lower_batch + upper_batch
         
+        
         feature = np.array([sample.state for sample in all_batch])
         next_feature = np.array([sample.next_state for sample in all_batch])
-        predict = np.array([sample.predict for sample in all_batch])
-        rewards = np.array([sample.reward for sample in all_batch])
-        #print(next_states)
+        cancat_states_tensor = (torch.tensor(np.concatenate([feature,next_feature])).float().to(self.device))
+        
+        all_targets = self.model(cancat_states_tensor)
+        
+        targets = all_targets[:self.batch_size]
+        next_targets = all_targets[self.batch_size:]
         
 
-        feature = torch.FloatTensor(feature).to(self.device)
-        predict = torch.FloatTensor(predict).to(self.device)
-        rewards = torch.tensor(rewards).to(self.device)
-        next_feature = torch.FloatTensor(next_feature).to(self.device)
+        for i, sample in enumerate(all_batch):
+            targets[i] = sample.reward
+            
+            if not sample.done:
+                targets[i] += self.gamma * next_targets[i]
+                
+        feature_tensor = torch.tensor(feature).float().to(self.device)
+        targets_tensor = torch.tensor(targets).float().to(self.device)
 
-        current_values = predict
-        next_values = self.target_model(next_feature)
-        next_values = torch.tensor(next_values).to(self.device)
-        target_values = rewards + self.gamma * next_values
+
+        for _ in range(self.epochs):
+            self.optimizer.zero_grad()
+            
+            predict = self.model(feature_tensor)
+            loss = self.loss_fn(predict, targets_tensor)
+            loss = loss.clone().detach().requires_grad_(True)
+            #print(loss)
+            
+            loss.backward()
+            self.optimizer.step()
+            
+            self.num_learn += 1
         
-
-        loss = self.loss_fn(current_values, target_values)
-        loss = loss.clone().detach().requires_grad_(True)
-        #print(loss)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        #print("loss: ", loss.item())
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+            
+        if self.num_learn >= 1700:
+            self.update_target_model()
+            self.num_learn = 0
+            print("Data line cnt lower: ", self.lower_experience_buffer.data_line_cnt)
+            print("Data line cnt upper: ", self.upper_experience_buffer.data_line_cnt)
+            
+            print("target model updated")
             
     
     
@@ -154,7 +179,6 @@ class MyNNAgent:
             return next_board_index, self.predict(self.env.get_features(next_state[next_board_index]))
         
         
-        
         for i in range(len(next_state)):
             if lines_cleard(scores[i]) >= 3:
                 feature = self.env.get_features(next_state[i])
@@ -162,7 +186,7 @@ class MyNNAgent:
             
             elif lines_cleard(scores[i]) >= 1:
                 feature = self.env.get_features(next_state[i])
-                line_clear_actions.append((i, self.predict(feature)))
+                line_clear_actions.append((i, self.predict(feature))) #index, rewardを格納
                 
             else:
                 feature = self.env.get_features(next_state[i])
@@ -183,20 +207,42 @@ class MyNNAgent:
             next_board_index = index_of_best_action
             self.last_action = 'hold' if index_of_best_action == len(next_state) - 1 else 'other'  
         return next_board_index, rewards[next_board_index]
+    
+    
+    def act_for_test(self, next_state):
+        rewards = []
+        
+        for i in range(len(next_state)):
+            feature = self.env.get_features(next_state[i])
+            rewards.append(self.predict(feature))
+            
+        index_of_best_action = rewards.index(max(rewards))
+        
+        # ホールドの連続選択を回避
+        if self.last_action == 'hold' and random.random() < 0.10:
+            # ランダムに他の行動を選択
+            next_board_index = random.choice([i for i in range(len(next_state)) if i != index_of_best_action])
+            self.last_action = 'other'
+        else:
+            next_board_index = index_of_best_action
+            self.last_action = 'hold' if index_of_best_action == len(next_state) - 1 else 'other'  
+            
+        return next_board_index, rewards[next_board_index]
+            
             
 
     def update_target_model(self):
         self.target_model.load_state_dict(self.model.state_dict())
 
-    def remember(self, state, predict, reward, next_state, done, y_position):
-        bufferItem = BufferItem(state, predict, reward, next_state, done)
+    def remember(self, state, predict, reward, next_state, done, y_position, line_clears):
+        bufferItem = BufferItem(state, predict, reward, next_state, done, line_clears)
         
-        if (y_position >10):
+        if (y_position > 9):
             self.lower_experience_buffer.append(bufferItem)
         else:
             self.upper_experience_buffer.append(bufferItem)
         
-        print(y_position)
+        #print(y_position)
 
 
     def load(self, name):

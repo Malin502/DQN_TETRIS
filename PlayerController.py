@@ -27,9 +27,10 @@ class PlayerController:
         clock = pygame.time.Clock()
 
         env = GameManager()
-        input_dim = 14
+        input_dim = 13
         
         agent = MyNNAgent(input_dim)
+        #agent.load("MyNN3.pth")
         
         save_button_rect = pygame.Rect(SCREEN_WIDTH - BUTTON_WIDTH - 10, SCREEN_HEIGHT - BUTTON_HEIGHT - 10, BUTTON_WIDTH, BUTTON_HEIGHT)
         training = True
@@ -40,6 +41,7 @@ class PlayerController:
             
             env.reset()
             total_reward = 0
+            total_lines_cleared = 0
             prev_score = 0
             
             
@@ -52,7 +54,7 @@ class PlayerController:
                     
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         if env.is_button_clicked(event.pos, save_button_rect):
-                            agent.save("mynn_tetris.pth")
+                            agent.save("mynn_tetri.pth")
                             print("Model saved")
                             #training = False
                             
@@ -60,8 +62,8 @@ class PlayerController:
                 past_feature = env.get_features(past_state)
                 
                 #次の盤面をシミュレートしエージェントに渡す
-                next_state, actions, scores = env.simulate_next_boards()
-                best_index, predict_reward = agent.act(next_state, scores)
+                next_state, actions, scores,y_position = env.simulate_next_boards()
+                best_index, predict_reward = agent.act(next_state, scores, y_position)
                 action = actions[best_index]
                 
                 y_position = env.action(action)
@@ -70,26 +72,32 @@ class PlayerController:
                 current_score = env.get_score()
                 reward = current_score - prev_score  # 報酬の計算
                 lines_cleared = env.lines_cleard(reward)
+                total_lines_cleared += lines_cleared
                 
                 prev_score = current_score
                 total_reward += reward
                 done = env.game_over()
+                
                 if done:
-                    reward -= 160
+                    reward -= 10
                     total_reward += reward
                     
-                agent.remember(past_feature, predict_reward, total_reward, env.get_features(env.board), done, y_position, lines_cleared)
-                agent.replay()
+                if total_lines_cleared >= 10:
+                    done = True
+                    
+                agent.remember(past_feature, predict_reward, reward, env.get_features(env.board), done, y_position, lines_cleared)
 
 
                 # 描画
                 env.draw_board(screen)
                 pygame.display.flip()
+                
+            agent.replay()
 
-            total_reward += 200
+            total_reward += 10
             print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward}")
 
-        agent.save("dqn_tetris.pth")
+        agent.save("MyNN_tetris.pth")
         pygame.quit()
         
         
@@ -168,10 +176,10 @@ class PlayerController:
         clock = pygame.time.Clock()
 
         env = GameManager()
-        input_dim = 14
+        input_dim = 13
         
         agent = MyNNAgent(input_dim)
-        agent.load("mynn_tetris_fail_15000.pth")
+        agent.load("NN6.pth")
         
         save_button_rect = pygame.Rect(SCREEN_WIDTH - BUTTON_WIDTH - 10, SCREEN_HEIGHT - BUTTON_HEIGHT - 10, BUTTON_WIDTH, BUTTON_HEIGHT)
         
@@ -203,8 +211,6 @@ class PlayerController:
             prev_score = current_score
             done = env.game_over()
                 
-            agent.remember(past_feature, predict_reward, reward, env.get_features(env.board), done, y_position)
-            agent.replay()
             
             if done:
                 env.reset()
@@ -327,7 +333,7 @@ class PlayerController:
                     elif event.key == pygame.K_DOWN:
                         env.move("down")
                     elif event.key == pygame.K_h:
-                        feature = env.get_features(env.board)
+                        feature = env.get_hole_count()
                         print(feature)
 
             if env.game_over():

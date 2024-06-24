@@ -83,9 +83,9 @@ class MyNNAgent:
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.loss_fn = nn.MSELoss()
         self.gamma = 0.99
-        self.epsilon = 1.0
+        self.epsilon = 0.7
         self.epsilon_min = 0.05
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 0.998
         self.num_learn = 0
         self.env = GameManager()
         self.update_target_model()
@@ -155,18 +155,18 @@ class MyNNAgent:
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
             
-        if self.num_learn >= 1700:
+        if self.num_learn >= 100:
             self.update_target_model()
             self.num_learn = 0
             print("Data line cnt lower: ", self.lower_experience_buffer.data_line_cnt)
             print("Data line cnt upper: ", self.upper_experience_buffer.data_line_cnt)
             
-            print("target model updated")
+            #print("target model updated")
             
     
     
     #盤面をシミュレートして報酬の予測値が最も高い行動の盤面に移動する
-    def act(self, next_state, scores):
+    def act(self, next_state, scores, y_position):
         #print(scores)
         rewards = []
         line_clear_actions = []
@@ -180,32 +180,59 @@ class MyNNAgent:
         
         
         for i in range(len(next_state)):
+            #3ライン以上消える場合はその行動を選択
             if lines_cleard(scores[i]) >= 3:
                 feature = self.env.get_features(next_state[i])
                 return i, self.predict(feature)
             
+            #1ライン以上消える場合はその行動を保存
             elif lines_cleard(scores[i]) >= 1:
                 feature = self.env.get_features(next_state[i])
-                line_clear_actions.append((i, self.predict(feature))) #index, rewardを格納
-                
+                predict = self.predict(feature)
+                line_clear_actions.append((i, predict)) #index, rewardを格納
+                rewards.append(predict)
+            
+            #それ以外の場合は報酬の予測値を計算
             else:
                 feature = self.env.get_features(next_state[i])
                 rewards.append(self.predict(feature))
-                
-        if len(line_clear_actions) > 0:
+          
+              
+        if len(line_clear_actions) > 0 and y_position < 9:
                 index_of_best_action = random.choice(line_clear_actions)
                 return index_of_best_action[0], index_of_best_action[1]
             
-        index_of_best_action = rewards.index(max(rewards))
             
+        index_of_best_action = rewards.index(max(rewards)) #報酬の予測値が最も高い行動のインデックスを取得
+        
+        
         # ホールドの連続選択を回避
-        if self.last_action == 'hold' and random.random() < 0.50: #学習効率化のためにホールドの連続選択を回避
+        if self.last_action == 'hold' and index_of_best_action == (len(next_state) - 1) and random.random() < 0.3: # 学習効率化のためにホールドの連続選択を回避
             # ランダムに他の行動を選択
-            next_board_index = random.choice([i for i in range(len(next_state)) if i != index_of_best_action])
+            possible_actions = []
+            for i in range(len(next_state)):
+                if i != index_of_best_action:
+                    possible_actions.append(i)
+            
+            if possible_actions:  # リストが空でないか確認
+                next_board_index = random.choice(possible_actions)
+            else:
+                print("Error: No other possible actions available.")
+                return None, None
+
             self.last_action = 'other'
+            
+            #回避無し
         else:
             next_board_index = index_of_best_action
-            self.last_action = 'hold' if index_of_best_action == len(next_state) - 1 else 'other'  
+            self.last_action = 'hold' if index_of_best_action == len(next_state) - 1 else 'other'
+
+        # インデックスの範囲チェック
+        if next_board_index >= len(rewards):
+            print(f"Error: next_board_index ({next_board_index}) is out of range (0 to {len(rewards)-1})")
+            print(f"next_state: {len(next_state)}, rewards: {len(rewards)}")
+            return None, None
+
         return next_board_index, rewards[next_board_index]
     
     
@@ -235,18 +262,21 @@ class MyNNAgent:
         self.target_model.load_state_dict(self.model.state_dict())
 
     def remember(self, state, predict, reward, next_state, done, y_position, line_clears):
-        bufferItem = BufferItem(state, predict, reward, next_state, done, line_clears)
         
-        if (y_position > 9):
+        if y_position > 9:
+            bufferItem = BufferItem(state, predict, reward, next_state, done, line_clears)
             self.lower_experience_buffer.append(bufferItem)
+            
         else:
+            reward *= 0.6
+            bufferItem = BufferItem(state, predict, reward, next_state, done, line_clears)
             self.upper_experience_buffer.append(bufferItem)
         
         #print(y_position)
 
 
     def load(self, name):
-        self.model.load_state_dict(torch.load(name, map_location=self.device))
+        self.model.load_state_dict(torch.load(name))
 
     def save(self, name):
         torch.save(self.model.state_dict(), name)

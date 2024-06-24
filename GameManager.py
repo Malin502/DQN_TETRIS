@@ -98,7 +98,7 @@ class GameManager:
                 self.lock_shape()
                 lines_cleared = self.clear_lines()
                 self.latest_y_position = self.current_position[0]
-                self.score += 1 * self.latest_y_position / 10 + self.calculate_line_clear_score(lines_cleared)
+                self.score += (1  + self.calculate_line_clear_score(lines_cleared))
                 self.score = round(self.score, 2)
                 self.new_shape()
             return False
@@ -181,9 +181,9 @@ class GameManager:
         elif lines_cleared == 2:
             return 300
         elif lines_cleared == 3:
-            return 500
+            return 600
         elif lines_cleared == 4:
-            return 800
+            return 1000
         return 0
 
     def get_state(self):
@@ -311,7 +311,7 @@ class GameManager:
             simulation_manager.board = np.copy(self.board)
             simulation_manager.current_shape.shape = np.copy(self.current_shape.shape)
 
-        return np.array(simulated_boards), actions, scores
+        return np.array(simulated_boards), actions, scores, self.latest_y_position
 
 
     
@@ -379,14 +379,15 @@ class GameManager:
         hold_shape_type = self.hold_shape.type if self.hold_shape is not None else -1
 
         features = [
-            hole_count,
+            #hole_count,
             blocks_above_holes,
+            center_max_height,
             self.latest_clear_mino_height,
             row_transitions,
             column_transitions,
             bumpiness,
             cumulative_wells,
-            center_max_height,
+            #center_max_height,
             aggregate_height,
             current_shape_type
         ] + next_shape_types + [hold_shape_type]
@@ -409,3 +410,19 @@ class GameManager:
                 res += cnt**2
                 
         return res
+    
+    def get_hole_count(self) -> int:
+        # ========== hole_count ========== #
+        # ブロックしたの空マスの数
+        hole_count = 0
+        
+        for x in range(BOARD_WIDTH):
+            block_found = False
+            for y in range(BOARD_HEIGHT):
+                if self.board[y, x] != 0:
+                    block_found = True
+                        
+                elif block_found:
+                    hole_count += 1
+                    
+        return hole_count

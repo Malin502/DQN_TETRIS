@@ -245,3 +245,6 @@ class Tetris:
         score_text = self.font.render(f'Score: {self.score}', True, WHITE)
         self.screen.blit(score_text, (5, 5))
         pygame.display.flip()
+        
+    def get_cleared_lines(self):
+        return self.cleared_lines

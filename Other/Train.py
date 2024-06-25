@@ -23,10 +23,10 @@ def get_args():
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--initial_epsilon", type=float, default=1)
     parser.add_argument("--final_epsilon", type=float, default=1e-3)
-    parser.add_argument("--num_decay_epochs", type=float, default=2000)
-    parser.add_argument("--num_epochs", type=int, default=3000)
-    parser.add_argument("--save_interval", type=int, default=1000)
-    parser.add_argument("--replay_memory_size", type=int, default=30000,
+    parser.add_argument("--num_decay_epochs", type=float, default=3000)
+    parser.add_argument("--num_epochs", type=int, default=4000)
+    parser.add_argument("--save_interval", type=int, default=500)
+    parser.add_argument("--replay_memory_size", type=int, default=15000,
                         help="Number of epoches between testing phases")
     parser.add_argument("--log_path", type=str, default="tensorboard")
     parser.add_argument("--saved_path", type=str, default="trained_models")
@@ -58,7 +58,9 @@ def train(opt):
         model.cuda()
         state = state.cuda()
 
-    replay_memory = deque(maxlen=opt.replay_memory_size)
+    upper_replay_memory = deque(maxlen=opt.replay_memory_size)
+    lower_replay_memory = deque(maxlen=opt.replay_memory_size)
+    
     epoch = 0
     frame = 0
 
@@ -100,7 +102,20 @@ def train(opt):
 
         if torch.cuda.is_available():
             next_state = next_state.cuda()
-        replay_memory.append([state, reward, next_state, done])
+        
+        
+        y_pos = env.current_pos["y"]
+        print(y_pos) #ずっと0
+        
+        if y_pos < opt.height // 2:
+            upper_replay_memory.append([state, reward, next_state, done])
+        else:
+            lower_replay_memory.append([state, reward, next_state, done])
+        
+        
+        cleared_lines = env.get_cleared_lines()
+        if cleared_lines > 100:
+            done = True
         
         if done:
             final_score = env.score
@@ -113,19 +128,24 @@ def train(opt):
             state = next_state
             continue
         
-        if len(replay_memory) < opt.replay_memory_size / 10:
+        
+        if len(upper_replay_memory) < opt.replay_memory_size / 10 or len(lower_replay_memory) < opt.replay_memory_size / 10:
             continue
+        
         epoch += 1
-        batch = sample(replay_memory, min(len(replay_memory), opt.batch_size))
+        all_replay_memory = upper_replay_memory + lower_replay_memory
+        batch = sample(all_replay_memory, min(len(all_replay_memory), opt.batch_size))
         state_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
         state_batch = torch.stack(tuple(state for state in state_batch))
         reward_batch = torch.from_numpy(np.array(reward_batch, dtype=np.float32)[:, None])
         next_state_batch = torch.stack(tuple(state for state in next_state_batch))
 
+
         if torch.cuda.is_available():
             state_batch = state_batch.cuda()
             reward_batch = reward_batch.cuda()
             next_state_batch = next_state_batch.cuda()
+
 
         q_values = model(state_batch)
         model.eval()

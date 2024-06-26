@@ -100,10 +100,11 @@ class Tetris:
 
     def get_next_states(self):
         states = {}
+        lines_cleared_dict = {}
         piece_id = self.ind
         curr_piece = [row[:] for row in self.piece]
-        
-        #ピースによって回転数の設定
+
+        # ピースによって回転数の設定
         if piece_id == 0:  # O piece
             num_rotations = 1
         elif piece_id == 2 or piece_id == 3 or piece_id == 4:
@@ -120,9 +121,14 @@ class Tetris:
                     pos["y"] += 1
                 self.truncate(piece, pos)
                 board = self.store(piece, pos)
-                states[(x, i)] = self.get_state_properties(board)
+                state_properties = self.get_state_properties(board)
+                lines_cleared, _ = self.check_cleared_rows(board)
+                states[(x, i)] = state_properties
+                lines_cleared_dict[(x, i)] = lines_cleared
             curr_piece = self.rotate(curr_piece)
-        return states
+        return states, lines_cleared_dict
+
+
 
     def get_current_board_state(self):
         board = [x[:] for x in self.board]
@@ -130,6 +136,16 @@ class Tetris:
             for x in range(len(self.piece[y])):
                 board[y + self.current_pos["y"]][x + self.current_pos["x"]] = self.piece[y][x]
         return board
+    
+    def get_line_score(self, cleared_lines):
+        if cleared_lines == 1:
+            return 40
+        elif cleared_lines == 2:
+            return 100
+        elif cleared_lines == 3:
+            return 210
+        elif cleared_lines == 4:
+            return 400
 
     def new_piece(self):
         if not len(self.bag):
@@ -213,14 +229,14 @@ class Tetris:
         self.latest_y_pos = self.current_pos["y"]
 
         lines_cleared, self.board = self.check_cleared_rows(self.board)
-        score = 1 + (lines_cleared ** 2) * self.width
+        score = 1 + self.get_line_score(lines_cleared)
         self.score += score
         self.tetrominoes += 1
         self.cleared_lines += lines_cleared
         if not self.gameover:
             self.new_piece()
         if self.gameover:
-            self.score -= 2
+            self.score -= 300
 
         return score, self.gameover
 

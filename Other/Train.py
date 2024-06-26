@@ -24,11 +24,11 @@ def get_args():
     parser.add_argument("--initial_epsilon", type=float, default=1)
     parser.add_argument("--final_epsilon", type=float, default=1e-3)
     parser.add_argument("--num_decay_epochs", type=float, default=3000)
-    parser.add_argument("--num_epochs", type=int, default=4000)
-    parser.add_argument("--save_interval", type=int, default=500)
+    parser.add_argument("--num_epochs", type=int, default=5000)
+    parser.add_argument("--save_interval", type=int, default=200)
     parser.add_argument("--replay_memory_size", type=int, default=15000,
                         help="Number of epoches between testing phases")
-    parser.add_argument("--num_update_model", type=int, default=250)
+    parser.add_argument("--num_update_model", type=int, default=50)
     parser.add_argument("--log_path", type=str, default="tensorboard")
     parser.add_argument("--saved_path", type=str, default="trained_models")
 
@@ -45,20 +45,19 @@ def train(opt):
         shutil.rmtree(opt.log_path)
     os.makedirs(opt.log_path)
     
-    
     env = Tetris(width=opt.width, height=opt.height, block_size=opt.block_size)
     model = DeepQNetwork()
-    target_model = DeepQNetwork() 
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr)
     criterion = nn.MSELoss()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    
+    print(f"Using {device} device")
 
     state = env.reset()
     
     model.to(device)
     target_model.to(device)
-    state.to(device)
+    state = state.to(device)
 
     upper_replay_memory = deque(maxlen=opt.replay_memory_size)
     lower_replay_memory = deque(maxlen=opt.replay_memory_size)
@@ -75,7 +74,7 @@ def train(opt):
                 pygame.quit()
                 return
 
-        next_steps = env.get_next_states()
+        next_steps, lines_cleared_dict = env.get_next_states()
         # Exploration or exploitation
         epsilon = opt.final_epsilon + (max(opt.num_decay_epochs - epoch, 0) * (
                 opt.initial_epsilon - opt.final_epsilon) / opt.num_decay_epochs)
@@ -84,8 +83,7 @@ def train(opt):
         random_action = u <= epsilon
         next_actions, next_states = zip(*next_steps.items())
         
-        next_states = torch.stack(next_states)
-        next_states.to(device)
+        next_states = torch.stack(next_states).to(device)
         model.eval()
         
         with torch.no_grad():
@@ -95,38 +93,44 @@ def train(opt):
         if random_action:
             index = randint(0, len(next_steps) - 1)
         else:
-            index = torch.argmax(predictions).item()
+            # 条件に基づいてアクションを選択
+            selected_indices = []
+            for idx, action in enumerate(next_actions):
+                lines_cleared = lines_cleared_dict[action]
+                if lines_cleared >= 3:
+                    selected_indices.append(idx)
+                elif lines_cleared >= 1 and env.latest_y_pos < 8:
+                    selected_indices.append(idx)
 
-        next_state = next_states[index, :]
+            if selected_indices:
+                index = selected_indices[0]  # 条件を満たすアクションが複数ある場合、最初のものを選択
+            else:
+                index = torch.argmax(predictions).item()
+
+        next_state = next_states[index, :].to(device)
         action = next_actions[index]
 
         reward, done = env.step(action)
-
         
         y_pos = env.latest_y_pos
         
         if y_pos < opt.height // 2:
             upper_replay_memory.append([state, reward, next_state, done])
-            #print("Upper")
         else:
             lower_replay_memory.append([state, reward, next_state, done])
-            #print("Lower")
-        
         
         cleared_lines = env.get_cleared_lines()
-        if cleared_lines > 100:
+        if cleared_lines > 500:
             done = True
         
         if done:
             final_score = env.score
             final_tetrominoes = env.tetrominoes
             final_cleared_lines = env.cleared_lines
-            state = env.reset()
-            state.to(device)
+            state = env.reset().to(device)
         else:
             state = next_state
             continue
-        
         
         if len(upper_replay_memory) < opt.replay_memory_size / 10 or len(lower_replay_memory) < opt.replay_memory_size / 10:
             continue
@@ -135,21 +139,14 @@ def train(opt):
         all_replay_memory = upper_replay_memory + lower_replay_memory
         batch = sample(all_replay_memory, min(len(all_replay_memory), opt.batch_size))
         state_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
-        state_batch = torch.stack(tuple(state for state in state_batch))
-        reward_batch = torch.from_numpy(np.array(reward_batch, dtype=np.float32)[:, None])
-        next_state_batch = torch.stack(tuple(state for state in next_state_batch))
-
-
-        state_batch.to(device)
-        reward_batch.to(device)
-        next_state_batch.to(device)
-
+        state_batch = torch.stack(tuple(state for state in state_batch)).to(device)
+        reward_batch = torch.from_numpy(np.array(reward_batch, dtype=np.float32)[:, None]).to(device)
+        next_state_batch = torch.stack(tuple(state for state in next_state_batch)).to(device)
 
         q_values = model(state_batch)
         model.eval()
-        target_model.eval()
         with torch.no_grad():
-            next_prediction_batch = target_model(next_state_batch)
+            next_prediction_batch = model(next_state_batch)
         model.train()
 
         y_batch = torch.cat(
@@ -161,14 +158,11 @@ def train(opt):
         loss.backward()
         optimizer.step()
 
-        print(f"Epoch: {epoch}/{opt.num_epochs}, Score: {final_score}")
+        print(f"Epoch: {epoch}/{opt.num_epochs}, Score: {final_score}, cleared lines: {final_cleared_lines}, Loss: {loss.item()}")
 
         if epoch > 0 and epoch % opt.save_interval == 0:
             torch.save(model.state_dict(), "MyModel.pth")
             
-        if epoch % opt.num_update_model == 0:
-            target_model.load_state_dict(model.state_dict())
-            target_model.eval()
 
         # 描画のタイミングを調整
         if frame % 10 == 0:
@@ -179,6 +173,7 @@ def train(opt):
 
     torch.save(model.state_dict(), "MyModel.pth")
     pygame.quit()
+
 
 if __name__ == "__main__":
     opt = get_args()

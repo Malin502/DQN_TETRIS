@@ -28,6 +28,7 @@ def get_args():
     parser.add_argument("--save_interval", type=int, default=500)
     parser.add_argument("--replay_memory_size", type=int, default=15000,
                         help="Number of epoches between testing phases")
+    parser.add_argument("--num_update_model", type=int, default=250)
     parser.add_argument("--log_path", type=str, default="tensorboard")
     parser.add_argument("--saved_path", type=str, default="trained_models")
 
@@ -47,16 +48,17 @@ def train(opt):
     
     env = Tetris(width=opt.width, height=opt.height, block_size=opt.block_size)
     model = DeepQNetwork()
+    target_model = DeepQNetwork() 
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr)
     criterion = nn.MSELoss()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
     state = env.reset()
     
-    
-    if torch.cuda.is_available():
-        model.cuda()
-        state = state.cuda()
+    model.to(device)
+    target_model.to(device)
+    state.to(device)
 
     upper_replay_memory = deque(maxlen=opt.replay_memory_size)
     lower_replay_memory = deque(maxlen=opt.replay_memory_size)
@@ -83,9 +85,9 @@ def train(opt):
         next_actions, next_states = zip(*next_steps.items())
         
         next_states = torch.stack(next_states)
-        if torch.cuda.is_available():
-            next_states = next_states.cuda()
+        next_states.to(device)
         model.eval()
+        
         with torch.no_grad():
             predictions = model(next_states)[:, 0]
             
@@ -100,17 +102,15 @@ def train(opt):
 
         reward, done = env.step(action)
 
-        if torch.cuda.is_available():
-            next_state = next_state.cuda()
         
-        
-        y_pos = env.current_pos["y"]
-        print(y_pos) #ずっと0
+        y_pos = env.latest_y_pos
         
         if y_pos < opt.height // 2:
             upper_replay_memory.append([state, reward, next_state, done])
+            #print("Upper")
         else:
             lower_replay_memory.append([state, reward, next_state, done])
+            #print("Lower")
         
         
         cleared_lines = env.get_cleared_lines()
@@ -122,8 +122,7 @@ def train(opt):
             final_tetrominoes = env.tetrominoes
             final_cleared_lines = env.cleared_lines
             state = env.reset()
-            if torch.cuda.is_available():
-                state = state.cuda()
+            state.to(device)
         else:
             state = next_state
             continue
@@ -141,16 +140,16 @@ def train(opt):
         next_state_batch = torch.stack(tuple(state for state in next_state_batch))
 
 
-        if torch.cuda.is_available():
-            state_batch = state_batch.cuda()
-            reward_batch = reward_batch.cuda()
-            next_state_batch = next_state_batch.cuda()
+        state_batch.to(device)
+        reward_batch.to(device)
+        next_state_batch.to(device)
 
 
         q_values = model(state_batch)
         model.eval()
+        target_model.eval()
         with torch.no_grad():
-            next_prediction_batch = model(next_state_batch)
+            next_prediction_batch = target_model(next_state_batch)
         model.train()
 
         y_batch = torch.cat(
@@ -166,6 +165,10 @@ def train(opt):
 
         if epoch > 0 and epoch % opt.save_interval == 0:
             torch.save(model.state_dict(), "MyModel.pth")
+            
+        if epoch % opt.num_update_model == 0:
+            target_model.load_state_dict(model.state_dict())
+            target_model.eval()
 
         # 描画のタイミングを調整
         if frame % 10 == 0:

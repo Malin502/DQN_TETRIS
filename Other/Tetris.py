@@ -53,6 +53,7 @@ class Tetris:
         self.screen = pygame.display.set_mode((self.width * self.block_size, self.height * self.block_size))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont('Arial', 25)
+        self.latest_y_pos = 0
         
     def reset(self):
         self.board = [[0] * self.width for _ in range(self.height)]
@@ -202,12 +203,14 @@ class Tetris:
         while not self.check_collision(self.piece, self.current_pos):
             self.current_pos["y"] += 1
             self.render()
+        self
 
         overflow = self.truncate(self.piece, self.current_pos)
         if overflow:
             self.gameover = True
 
         self.board = self.store(self.piece, self.current_pos)
+        self.latest_y_pos = self.current_pos["y"]
 
         lines_cleared, self.board = self.check_cleared_rows(self.board)
         score = 1 + (lines_cleared ** 2) * self.width

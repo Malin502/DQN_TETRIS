@@ -56,7 +56,6 @@ def train(opt):
     state = env.reset()
     
     model.to(device)
-    target_model.to(device)
     state = state.to(device)
 
     upper_replay_memory = deque(maxlen=opt.replay_memory_size)
@@ -144,6 +143,7 @@ def train(opt):
         next_state_batch = torch.stack(tuple(state for state in next_state_batch)).to(device)
 
         q_values = model(state_batch)
+        
         model.eval()
         with torch.no_grad():
             next_prediction_batch = model(next_state_batch)

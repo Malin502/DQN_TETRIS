@@ -139,13 +139,15 @@ class Tetris:
     
     def get_line_score(self, cleared_lines):
         if cleared_lines == 1:
-            return 40
+            return 15
         elif cleared_lines == 2:
-            return 100
+            return 40
         elif cleared_lines == 3:
-            return 210
+            return 90
         elif cleared_lines == 4:
-            return 400
+            return 160
+        else:
+            return 0
 
     def new_piece(self):
         if not len(self.bag):
@@ -236,7 +238,7 @@ class Tetris:
         if not self.gameover:
             self.new_piece()
         if self.gameover:
-            self.score -= 300
+            self.score -= 2
 
         return score, self.gameover
 

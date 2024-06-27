@@ -89,6 +89,7 @@ def train(opt):
             predictions = model(next_states)[:, 0]
             
         model.train()
+        
         if random_action:
             index = randint(0, len(next_steps) - 1)
         else:
@@ -102,7 +103,8 @@ def train(opt):
                     selected_indices.append(idx)
 
             if selected_indices:
-                index = selected_indices[0]  # 条件を満たすアクションが複数ある場合、最初のものを選択
+                random_index = randint(0, len(selected_indices) - 1)
+                index = selected_indices[random_index]  # 条件を満たすアクションが複数ある場合、最初のものを選択
             else:
                 index = torch.argmax(predictions).item()
 
@@ -135,9 +137,11 @@ def train(opt):
             continue
         
         epoch += 1
-        all_replay_memory = upper_replay_memory + lower_replay_memory
-        batch = sample(all_replay_memory, min(len(all_replay_memory), opt.batch_size))
-        state_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
+        upper_batch = sample(upper_replay_memory, min(len(upper_replay_memory), opt.batch_size // 2))
+        lower_batch = sample(lower_replay_memory, min(len(lower_replay_memory), opt.batch_size // 2))
+        all_batch = upper_batch + lower_batch
+        
+        state_batch, reward_batch, next_state_batch, done_batch = zip(*all_batch)
         state_batch = torch.stack(tuple(state for state in state_batch)).to(device)
         reward_batch = torch.from_numpy(np.array(reward_batch, dtype=np.float32)[:, None]).to(device)
         next_state_batch = torch.stack(tuple(state for state in next_state_batch)).to(device)

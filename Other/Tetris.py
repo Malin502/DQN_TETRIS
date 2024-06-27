@@ -238,7 +238,7 @@ class Tetris:
         if not self.gameover:
             self.new_piece()
         if self.gameover:
-            self.score -= 2
+            self.score -= 3
 
         return score, self.gameover
 

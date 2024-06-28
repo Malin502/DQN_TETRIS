@@ -78,10 +78,10 @@ class PlayerController:
                 done = env.game_over()
                 
                 if done:
-                    reward -= 2
+                    reward -= 3
                     total_reward += reward
                     
-                if total_lines_cleared >= 50:
+                if total_lines_cleared >= 500:
                     done = True
                     
                 agent.remember(past_feature, predict_reward, reward, env.get_features(env.board), done, y_position, lines_cleared)
@@ -93,7 +93,7 @@ class PlayerController:
                 
             agent.replay()
 
-            total_reward += 2
+            total_reward += 3
             print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward}")
 
         agent.save("MyNN_tetris.pth")

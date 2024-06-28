@@ -73,7 +73,7 @@ class MyNNAgent:
         self.epsilon = 1.0
         self.initial_epsilon = 1.0
         self.epsilon_min = 0.01
-        self.epsilon_decay_epochs = 3000
+        self.epsilon_decay_epochs = 4000
         self.num_learn = 0
         self.env = GameManager()
         self.update_target_model()

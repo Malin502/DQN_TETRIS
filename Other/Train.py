@@ -21,14 +21,14 @@ def get_args():
     parser.add_argument("--batch_size", type=int, default=512, help="The number of images per batch")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--gamma", type=float, default=0.99)
-    parser.add_argument("--initial_epsilon", type=float, default=1)
+    parser.add_argument("--initial_epsilon", type=float, default=1.0)
     parser.add_argument("--final_epsilon", type=float, default=1e-3)
-    parser.add_argument("--num_decay_epochs", type=float, default=3000)
-    parser.add_argument("--num_epochs", type=int, default=5000)
+    parser.add_argument("--num_decay_epochs", type=float, default=4000)
+    parser.add_argument("--num_epochs", type=int, default=6000)
     parser.add_argument("--save_interval", type=int, default=200)
     parser.add_argument("--replay_memory_size", type=int, default=15000,
                         help="Number of epoches between testing phases")
-    parser.add_argument("--num_update_model", type=int, default=50)
+    parser.add_argument("--num_update_model", type=int, default=30)
     parser.add_argument("--log_path", type=str, default="tensorboard")
     parser.add_argument("--saved_path", type=str, default="trained_models")
 
@@ -55,6 +55,8 @@ def train(opt):
 
     state = env.reset()
     
+    #model.load_state_dict(torch.load("MyModel_700lines_origin.pth"))
+    
     model.to(device)
     state = state.to(device)
 
@@ -72,6 +74,9 @@ def train(opt):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 return
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                torch.save(model.state_dict(), "MyModel.pth")
+                print("Model saved successfully")
 
         next_steps, lines_cleared_dict = env.get_next_states()
         # Exploration or exploitation
@@ -93,20 +98,7 @@ def train(opt):
         if random_action:
             index = randint(0, len(next_steps) - 1)
         else:
-            # 条件に基づいてアクションを選択
-            selected_indices = []
-            for idx, action in enumerate(next_actions):
-                lines_cleared = lines_cleared_dict[action]
-                if lines_cleared >= 3:
-                    selected_indices.append(idx)
-                elif lines_cleared >= 1 and env.latest_y_pos < 8:
-                    selected_indices.append(idx)
-
-            if selected_indices:
-                random_index = randint(0, len(selected_indices) - 1)
-                index = selected_indices[random_index]  # 条件を満たすアクションが複数ある場合、最初のものを選択
-            else:
-                index = torch.argmax(predictions).item()
+            index = torch.argmax(predictions).item()
 
         next_state = next_states[index, :].to(device)
         action = next_actions[index]
@@ -114,14 +106,16 @@ def train(opt):
         reward, done = env.step(action)
         
         y_pos = env.latest_y_pos
+        reward = reward * (1 + y_pos / 10)
         
-        if y_pos < opt.height // 2:
+        if y_pos < (opt.height // 2 - 1):
             upper_replay_memory.append([state, reward, next_state, done])
         else:
             lower_replay_memory.append([state, reward, next_state, done])
         
         cleared_lines = env.get_cleared_lines()
-        if cleared_lines > 500:
+        if cleared_lines > 1000:
+            torch.save(model.state_dict(), "MyModel_1000lines.pth")
             done = True
         
         if done:
@@ -134,7 +128,10 @@ def train(opt):
             continue
         
         if len(upper_replay_memory) < opt.replay_memory_size / 10 or len(lower_replay_memory) < opt.replay_memory_size / 10:
-            continue
+           continue
+       
+        #if len(upper_replay_memory) < opt.batch_size / 2 or len(lower_replay_memory) < opt.batch_size / 2:
+        #    continue
         
         epoch += 1
         upper_batch = sample(upper_replay_memory, min(len(upper_replay_memory), opt.batch_size // 2))
@@ -145,8 +142,6 @@ def train(opt):
         state_batch = torch.stack(tuple(state for state in state_batch)).to(device)
         reward_batch = torch.from_numpy(np.array(reward_batch, dtype=np.float32)[:, None]).to(device)
         next_state_batch = torch.stack(tuple(state for state in next_state_batch)).to(device)
-
-        q_values = model(state_batch)
         
         model.eval()
         with torch.no_grad():
@@ -157,15 +152,18 @@ def train(opt):
             tuple(reward if done else reward + opt.gamma * prediction for reward, done, prediction in
                   zip(reward_batch, done_batch, next_prediction_batch)))[:, None]
 
-        optimizer.zero_grad()
-        loss = criterion(q_values, y_batch)
-        loss.backward()
-        optimizer.step()
+        for _ in range(4):
+            q_values = model(state_batch)
+            optimizer.zero_grad()
+            loss = criterion(q_values, y_batch)
+            loss.backward()
+            optimizer.step()
 
         print(f"Epoch: {epoch}/{opt.num_epochs}, Score: {final_score}, cleared lines: {final_cleared_lines}, Loss: {loss.item()}")
 
         if epoch > 0 and epoch % opt.save_interval == 0:
             torch.save(model.state_dict(), "MyModel.pth")
+            print("Model saved")
             
 
         # 描画のタイミングを調整

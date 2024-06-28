@@ -152,7 +152,7 @@ class GameManager:
 
     def calculate_line_clear_score(self, lines_cleared):
         if lines_cleared == 1:
-            return 10
+            return 15
         elif lines_cleared == 2:
             return 40
         elif lines_cleared == 3:

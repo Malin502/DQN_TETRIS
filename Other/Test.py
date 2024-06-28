@@ -25,7 +25,7 @@ def test(opt):
     else:
         torch.manual_seed(123)
     if torch.cuda.is_available():
-        model.load_state_dict(torch.load("MyModel.pth"))
+        model.load_state_dict(torch.load("MyModel_sugoi.pth"))
     else:
         model.load_state_dict(torch.load("MyModel.pth", map_location=torch.device('cpu')))
     
@@ -36,7 +36,7 @@ def test(opt):
         model.cuda()
 
     pygame.init()
-    screen = pygame.display.set_mode((opt.width * opt.block_size, opt.height * opt.block_size))
+    screen = pygame.display.set_mode((opt.width * opt.block_size + 200, opt.height * opt.block_size))
     clock = pygame.time.Clock()
 
     while True:
@@ -45,7 +45,7 @@ def test(opt):
                 pygame.quit()
                 return
 
-        next_steps = env.get_next_states()
+        next_steps, lines_cleared = env.get_next_states()
         next_actions, next_states = zip(*next_steps.items())
         next_states = torch.stack(next_states)
         if torch.cuda.is_available():
